@@ -1,0 +1,24 @@
+/**
+ * Shared TypeScript descriptions of products, cart quantities, sessions, and orders.
+ * These help catch coding mistakes; the server still validates incoming requests.
+ */
+import type sampleCatalog from "../shared/catalog.json";
+
+export type Product = (typeof sampleCatalog.products)[number];
+export type Cart = Record<string, number>;
+export type Session = { csrf: string; balanceCents: number; mode: string };
+export type Order = {
+  id: string;
+  items: { id: string; name: string; priceCents: number; quantity: number }[];
+  subtotalCents: number;
+  deliveryFeeCents: number;
+  totalCents: number;
+  location: string;
+  createdAt: number;
+  arrivesAt: number;
+  status: "preparing" | "delivering" | "delivered";
+};
+export type Pending = {
+  key: string;
+  body: { items: { id: string; quantity: number }[]; location: string };
+};

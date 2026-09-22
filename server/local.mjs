@@ -1,0 +1,81 @@
+/**
+ * Local Node server for development and the built demo. Serves dist/client,
+ * sends /api requests to the shared handler, and opens the local SQLite database.
+ */
+import { createServer } from "node:http";
+import { mkdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { resolve, extname, sep } from "node:path";
+import { Readable } from "node:stream";
+import { handleApi, secureResponse } from "./api.mjs";
+import { openDatabase } from "./local-db.mjs";
+
+mkdirSync(new URL("../.data/", import.meta.url), { recursive: true });
+const DB = openDatabase(
+  new URL("../.data/campus-demo.sqlite", import.meta.url).pathname.replace(
+    /^\/([A-Z]:)/i,
+    "$1",
+  ),
+);
+const root = resolve("dist/client");
+const types = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".webmanifest": "application/manifest+json",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+};
+const port = Number(process.env.PORT || 8787);
+const server = createServer(async (incoming, outgoing) => {
+  try {
+    const url = new URL(incoming.url, `http://${incoming.headers.host}`);
+    let response;
+    if (url.pathname.startsWith("/api/")) {
+      const init = { method: incoming.method, headers: incoming.headers };
+      if (!["GET", "HEAD"].includes(incoming.method)) {
+        init.body = Readable.toWeb(incoming);
+        init.duplex = "half";
+      }
+      response = await handleApi(new Request(url, init), {
+        DB,
+        INTEGRATION_MODE: process.env.INTEGRATION_MODE || "demo",
+      });
+    } else {
+      let file = resolve(root, "." + decodeURIComponent(url.pathname));
+      if (!file.startsWith(root + sep) && file !== root) {
+        outgoing.writeHead(403);
+        outgoing.end();
+        return;
+      }
+      if (!existsSync(file) || statSync(file).isDirectory())
+        file = resolve(root, "index.html");
+      const headers = {
+        "Content-Type": types[extname(file)] || "application/octet-stream",
+        "Cache-Control": /[\\/]assets[\\/]/.test(file)
+          ? "public, max-age=31536000, immutable"
+          : "no-cache",
+      };
+      response = existsSync(file)
+        ? new Response(readFileSync(file), { headers })
+        : new Response("Run npm run build before npm start.", { status: 503 });
+    }
+    const secured = secureResponse(response);
+    outgoing.writeHead(secured.status, Object.fromEntries(secured.headers));
+    outgoing.end(Buffer.from(await secured.arrayBuffer()));
+  } catch {
+    outgoing.writeHead(500);
+    outgoing.end("The local server could not handle this request.");
+  }
+});
+server.listen(port, "127.0.0.1", () =>
+  console.log(`Campus Store demo: http://localhost:${port}`),
+);
+for (const signal of ["SIGINT", "SIGTERM"])
+  process.on(signal, () =>
+    server.close(() => {
+      DB.close();
+      process.exit(0);
+    }),
+  );
