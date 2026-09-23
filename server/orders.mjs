@@ -4,6 +4,7 @@
  */
 import catalog from "../shared/catalog.json" with { type: "json" };
 import { json, readSmallJson } from "./http.mjs";
+import { ensureInventory, settleTicks, TICK_MS } from "./inventory.mjs";
 const uuid = () => crypto.randomUUID();
 const validId = (value) =>
   typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
@@ -95,18 +96,17 @@ export async function createDemoOrder(request, db, session, now) {
     0,
   );
   const total = subtotal + catalog.deliveryFeeCents;
-  const id = uuid();
-  // One SQLite statement atomically checks the balance and writes the order.
-  // A unique session/request key prevents retries from charging twice.
+  await ensureInventory(db);
+  // sequence is assigned by the shared database; client timestamps and IDs
+  // never decide priority. ready_at is the end of a server-assigned 100 ms tick.
   await db
     .prepare(
-      `INSERT INTO orders (id, session_id, request_key, request_hash, items, subtotal, total, location, created_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
-      WHERE ? <= ? - (SELECT COALESCE(SUM(total), 0) FROM orders WHERE session_id = ?)
+      `INSERT INTO checkout_queue (order_id, session_id, request_key, request_hash, items, subtotal, total, location, ready_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(session_id, request_key) DO NOTHING`,
     )
     .bind(
-      id,
+      uuid(),
       session.id,
       key,
       fingerprint,
@@ -114,27 +114,46 @@ export async function createDemoOrder(request, db, session, now) {
       subtotal,
       total,
       body.location,
-      now,
-      total,
-      catalog.initialBalanceCents,
-      session.id,
+      (Math.floor(now / TICK_MS) + 1) * TICK_MS,
     )
     .run();
-  const row = await db
-    .prepare("SELECT * FROM orders WHERE session_id = ? AND request_key = ?")
+  const queued = await db
+    .prepare("SELECT * FROM checkout_queue WHERE session_id = ? AND request_key = ?")
     .bind(session.id, key)
     .first();
-  if (!row)
-    return json(
-      {
-        error: "Not enough demo funds. Remove an item or reduce the quantity.",
-      },
-      409,
-    );
-  if (row.request_hash !== fingerprint)
+  if (queued.request_hash !== fingerprint)
     return json(
       { error: "This checkout ID was already used for a different cart." },
       409,
     );
-  return json(publicOrder(row, now), row.id === id ? 201 : 200);
+  // A request drives its tick while alive. Pending state is durable: a later
+  // retry or status poll resumes settlement after a disconnect/Worker restart.
+  if (queued.status === "pending") {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(TICK_MS, Math.max(0, queued.ready_at - Date.now()))));
+  }
+  return checkoutResult(db, session.id, key, Date.now());
+}
+
+export async function checkoutResult(db, sessionId, key, now) {
+  // Check ownership before allowing this endpoint to process any queue work.
+  let queued = await db.prepare(
+    "SELECT * FROM checkout_queue WHERE session_id = ? AND request_key = ?",
+  ).bind(sessionId, key).first();
+  if (!queued) return json({ error: "Checkout not found." }, 404);
+  if (queued.status === "pending") {
+    await settleTicks(db, now);
+    queued = await db.prepare("SELECT * FROM checkout_queue WHERE sequence = ?")
+      .bind(queued.sequence).first();
+  }
+  if (queued.status === "pending") {
+    return json({ status: "pending", requestKey: key, retryAfterMs: TICK_MS }, 202);
+  }
+  if (queued.status !== "accepted") {
+    return json({ code: queued.status, error: queued.status === "sold_out"
+      ? "An item in your bag sold out before your turn. No demo funds were charged. Please update your bag."
+      : "Not enough demo funds. Remove an item or reduce the quantity." }, 409);
+  }
+  const order = await db.prepare("SELECT * FROM orders WHERE id = ? AND session_id = ?")
+    .bind(queued.order_id, sessionId).first();
+  return json(publicOrder(order, now), 201);
 }

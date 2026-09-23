@@ -3,7 +3,8 @@
  * Restricts order access to the current session and delegates checkout to orders.mjs.
  */
 import { json } from "./http.mjs";
-import { publicOrder, createDemoOrder } from "./orders.mjs";
+import { publicOrder, createDemoOrder, checkoutResult } from "./orders.mjs";
+import { ensureInventory, availableInventory } from "./inventory.mjs";
 export { secureResponse } from "./http.mjs";
 import catalog from "../shared/catalog.json" with { type: "json" };
 
@@ -39,11 +40,16 @@ export async function handleApi(request, env, now = Date.now()) {
         return json({ error: "Request origin is not allowed." }, 403);
       }
     }
-    if (url.pathname === "/api/catalog" && request.method === "GET")
-      return json({ ...catalog, mode: "demo" });
     const db = env.DB;
     if (!db)
       return json({ error: "The demo store is temporarily unavailable." }, 503);
+    if (url.pathname === "/api/catalog" && request.method === "GET") {
+      await ensureInventory(db);
+      const stock = await availableInventory(db);
+      return json({ ...catalog, products: catalog.products.map((p) => ({
+        ...p, stock: stock.get(p.id) ?? 0,
+      })), mode: "demo" });
+    }
     const sessionId = request.headers
       .get("cookie")
       ?.split(";")
@@ -91,6 +97,11 @@ export async function handleApi(request, env, now = Date.now()) {
         { error: "Your demo session expired. Reload to start a new session." },
         401,
       );
+    if (url.pathname.startsWith("/api/checkouts/") && request.method === "GET") {
+      const key = url.pathname.slice("/api/checkouts/".length);
+      if (!validId(key)) return json({ error: "Checkout not found." }, 404);
+      return await checkoutResult(db, session.id, key, now);
+    }
     if (url.pathname === "/api/orders" && request.method === "GET") {
       const result = await db
         .prepare(

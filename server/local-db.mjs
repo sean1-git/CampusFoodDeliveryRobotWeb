@@ -33,18 +33,31 @@ export function openDatabase(filename = ":memory:") {
       throw error;
     }
   }
+  function prepared(sql, args = []) {
+    const statement = sqlite.prepare(sql);
+    return {
+      bind: (...values) => prepared(sql, values),
+      first: async () => statement.get(...args) ?? null,
+      all: async () => ({ results: statement.all(...args) }),
+      run: async () => statement.run(...args),
+      // Synchronous execution keeps all statements inside one local transaction.
+      execute: () => ({ results: statement.all(...args) }),
+    };
+  }
   return {
+    async batch(statements) {
+      sqlite.exec("BEGIN IMMEDIATE");
+      try {
+        const results = statements.map((statement) => statement.execute());
+        sqlite.exec("COMMIT");
+        return results;
+      } catch (error) {
+        sqlite.exec("ROLLBACK");
+        throw error;
+      }
+    },
     prepare(sql) {
-      const statement = sqlite.prepare(sql);
-      return {
-        bind(...args) {
-          return {
-            first: async () => statement.get(...args) ?? null,
-            all: async () => ({ results: statement.all(...args) }),
-            run: async () => statement.run(...args),
-          };
-        },
-      };
+      return prepared(sql);
     },
     close: () => sqlite.close(),
   };

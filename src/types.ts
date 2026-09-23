@@ -4,7 +4,9 @@
  */
 import type sampleCatalog from "../shared/catalog.json";
 
-export type Product = (typeof sampleCatalog.products)[number];
+export type Product = (typeof sampleCatalog.products)[number] & { stock?: number };
+export type Catalog = Omit<typeof sampleCatalog, "products"> & { products: Product[] };
+export type QueuedCheckout = { status: "pending"; requestKey: string; retryAfterMs: number };
 export type Cart = Record<string, number>;
 export type Session = { csrf: string; balanceCents: number; mode: string };
 export type Order = {

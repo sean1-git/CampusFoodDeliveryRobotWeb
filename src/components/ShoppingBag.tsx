@@ -87,7 +87,7 @@ export function ShoppingBag({
                     </button>
                     <span>{cart[p.id]}</span>
                     <button
-                      disabled={locked || cart[p.id] >= 20}
+                      disabled={locked || cart[p.id] >= Math.min(20, p.stock ?? 20)}
                       onClick={() => change(p, 1)}
                       aria-label={`Add one ${p.name}`}
                     >
@@ -142,6 +142,7 @@ export function ShoppingBag({
               <p className="checkout-note">
                 This is a simulation. No real money will be charged and no
                 physical robot will move.
+                {" "}Limited stock goes to the first valid checkout received.
               </p>
               <button
                 className="primary"

@@ -80,15 +80,16 @@ export function Storefront({
                 <div className="product-category">{p.category}</div>
                 <h3>{p.name}</h3>
                 <p>{p.description}</p>
+                <p>{p.stock === undefined ? "Connect to check stock" : p.stock === 0 ? "Sold out" : `${p.stock} left in demo stock`}</p>
                 <div className="product-bottom">
                   <strong>{money(p.priceCents)}</strong>
                   <button
-                    disabled={locked || (cart[p.id] || 0) >= 20}
+                    disabled={locked || (cart[p.id] || 0) >= Math.min(20, p.stock ?? 20)}
                     className="add"
                     onClick={() => change(p, 1)}
                     aria-label={`Add ${p.name} to bag`}
                   >
-                    {cart[p.id] > 0 ? `${cart[p.id]} in bag · +` : "Add +"}
+                    {p.stock === 0 ? "Sold out" : cart[p.id] > 0 ? `${cart[p.id]} in bag · +` : "Add +"}
                   </button>
                 </div>
               </div>
@@ -97,7 +98,8 @@ export function Storefront({
       </div>
       <p className="menu-note">
         A sample menu for exploring the experience. Product details and
-        availability are illustrative.
+        availability are illustrative. Stock is shared by all demo visitors and
+        confirmed at checkout; adding to your bag does not reserve an item.
       </p>
     </section>
   );

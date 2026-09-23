@@ -7,7 +7,10 @@ import {
   text,
   integer,
   uniqueIndex,
+  index,
+  check,
 } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
@@ -35,3 +38,36 @@ export const orders = sqliteTable(
     uniqueIndex("orders_session_request").on(table.sessionId, table.requestKey),
   ],
 );
+
+// Stock is shared across visitors. Purchases are an append-only allocation ledger.
+export const inventory = sqliteTable("inventory", {
+  productId: text("product_id").primaryKey(),
+  quantity: integer("quantity").notNull(),
+}, (table) => [check("inventory_nonnegative", sql`${table.quantity} >= 0`)]);
+
+export const orderItems = sqliteTable("order_items", {
+  orderId: text("order_id").notNull().references(() => orders.id),
+  productId: text("product_id").notNull().references(() => inventory.productId),
+  quantity: integer("quantity").notNull(),
+}, (table) => [
+  uniqueIndex("order_items_order_product").on(table.orderId, table.productId),
+  index("order_items_product").on(table.productId),
+  check("order_items_positive", sql`${table.quantity} > 0`),
+]);
+
+export const checkoutQueue = sqliteTable("checkout_queue", {
+  sequence: integer("sequence").primaryKey({ autoIncrement: true }),
+  sessionId: text("session_id").notNull().references(() => sessions.id),
+  requestKey: text("request_key").notNull(),
+  requestHash: text("request_hash").notNull(),
+  orderId: text("order_id").notNull(),
+  items: text("items").notNull(),
+  subtotal: integer("subtotal").notNull(),
+  total: integer("total").notNull(),
+  location: text("location").notNull(),
+  readyAt: integer("ready_at").notNull(),
+  status: text("status").notNull().default("pending"),
+}, (table) => [
+  uniqueIndex("checkout_queue_session_request").on(table.sessionId, table.requestKey),
+  index("checkout_queue_status_sequence").on(table.status, table.sequence),
+]);

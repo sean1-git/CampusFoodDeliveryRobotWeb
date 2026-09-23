@@ -8,6 +8,13 @@
       "when": 1790036027415,
       "tag": "0000_easy_zodiak",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790130879582,
+      "tag": "0001_modern_frightful_four",
+      "breakpoints": true
     }
   ]
 }

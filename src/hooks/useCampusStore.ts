@@ -4,12 +4,12 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import sampleCatalog from "../../shared/catalog.json";
-import type { Cart, Order, Pending, Product, Session } from "../types";
+import type { Cart, Catalog, Order, Pending, Product, QueuedCheckout, Session } from "../types";
 import { requestJson } from "../lib/api";
 import { initialCart, load, save } from "../lib/storage";
 
 export function useCampusStore() {
-  const [catalog, setCatalog] = useState(sampleCatalog);
+  const [catalog, setCatalog] = useState<Catalog>(sampleCatalog);
   const [session, setSession] = useState<Session | null>(null);
   const [cart, setCart] = useState<Cart>(initialCart);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -32,6 +32,8 @@ export function useCampusStore() {
     setSession(user);
     const data = await requestJson<{ orders: Order[] }>("/api/orders");
     setOrders(data.orders);
+    const menu = await requestJson<Catalog>("/api/catalog");
+    setCatalog(menu);
     return data.orders;
   }, []);
 
@@ -45,7 +47,7 @@ export function useCampusStore() {
     let active = true;
     async function start() {
       try {
-        const data = await requestJson<typeof sampleCatalog>("/api/catalog");
+        const data = await requestJson<Catalog>("/api/catalog");
         if (active) {
           setCatalog(data);
           await refresh();
@@ -97,7 +99,9 @@ export function useCampusStore() {
     if (locked) return;
     setCart((old) => ({
       ...old,
-      [product.id]: Math.min(20, Math.max(0, (old[product.id] || 0) + amount)),
+      [product.id]: amount > 0
+        ? Math.max(old[product.id] || 0, Math.min(20, product.stock ?? 20, (old[product.id] || 0) + amount))
+        : Math.max(0, (old[product.id] || 0) + amount),
     }));
     setNotice(
       amount > 0
@@ -121,7 +125,7 @@ export function useCampusStore() {
     save("campus-pending", attempt);
     setPending(attempt);
     try {
-      const order = await requestJson<Order>("/api/orders", {
+      let result = await requestJson<Order | QueuedCheckout>("/api/orders", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -130,6 +134,13 @@ export function useCampusStore() {
         },
         body: JSON.stringify(attempt.body),
       });
+      const deadline = Date.now() + 15000;
+      while (result.status === "pending") {
+        if (Date.now() >= deadline) throw new Error("Checkout is still queued.");
+        await new Promise((resolve) => setTimeout(resolve, result.status === "pending" ? result.retryAfterMs : 100));
+        result = await requestJson<Order | QueuedCheckout>(`/api/checkouts/${attempt.key}`);
+      }
+      const order = result;
       save("campus-pending", null);
       setPending(null);
       setCart({});
@@ -151,6 +162,7 @@ export function useCampusStore() {
           ? problem.message
           : "Connection interrupted. Use “Retry this checkout” to check the same order safely. Your bag is saved.",
       );
+      void refresh().catch(() => {});
     } finally {
       setSubmitting(false);
     }

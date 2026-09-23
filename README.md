@@ -50,6 +50,18 @@ Use the app's Install app control for browser-specific guidance. Browser support
 
 Demo order data is stored locally in `.data/campus-demo.sqlite`. Demo sessions use cookies; there is no school login. Cart contents are stored in the browser. Each session starts with $50 in simulated funds. A demo delivery costs $1, and order progress is simulated over roughly 65 seconds.
 
+## Shared stock and checkout ticks
+
+The server initializes 20 demo units of each product once. Inventory is shared by all visitors; refreshing, opening a new session, or restarting does not replenish it. Orders made before inventory was introduced remain in order history and wallet totals, but do not consume the new initial stock. There is no automatic restock or public stock-editing endpoint.
+
+Checkout requests enter a durable database queue and wait for their server-assigned 100 ms tick to close. The database assigns an increasing sequence number: the first valid checkout recorded wins, including ties within one tick. Browser click times, client timestamps, and request IDs never determine priority. Network latency can affect when a request reaches the queue; this is first-come-first-served, not a lottery.
+
+Each settlement transaction processes up to eight queued checkouts in sequence. It checks the entire cart and wallet, records the order and stock allocation, and stores the outcome atomically. Insufficient stock or funds rejects the whole cart without charging or reserving anything. Duplicate retries return the same outcome. Database transactions and a queue-head guard coordinate multiple Workers, so in-memory locks are not required.
+
+The request waits briefly for its tick, then settles eligible work. A pending response uses HTTP 202; the browser polls the session-protected `/api/checkouts/:requestKey` route and retains its retry ID across interruptions. This is request-driven tick processing, not a continuously running game loop: after a disconnect, later checkouts/status polls resume any durable pending work. Under load, confirmation can take longer than 100 ms. Storefront counts refresh every five seconds; the server's checkout decision remains authoritative.
+
+Run `node --test tests/inventory.test.mjs` to exercise twelve buyers competing for the last unit, tick boundaries, FIFO priority, stock/fund rejection, retries, separate database connections, and transaction rollback. To reproduce a one-unit scenario locally, use an isolated test database as these tests do rather than changing the public demo's shared stock.
+
 ## Refactoring completed
 
 The main React component now composes separate UI components. Store state and PWA behavior have separate hooks, with shared helpers for requests, storage, and currency formatting. Server routing, checkout logic, and HTTP utilities are also separated. Existing behavior is preserved and the code has been formatted for readability.
@@ -62,7 +74,7 @@ npm run build
 npm test
 ```
 
-All checks passed after refactoring, including 12 tests covering price validation, duplicate checkout retries, concurrent overspending, order ownership, CSRF checks, invalid carts, simulated delivery states, rejection of unsupported live mode, icons, and service-worker caching/update behavior. A browser check also confirmed that the cached storefront loads with the test server stopped.
+The suite includes 20 tests covering inventory competition and atomic checkout, price validation, duplicate retries, concurrent overspending, order ownership, CSRF checks, invalid carts, simulated delivery states, rejection of unsupported live mode, icons, and service-worker caching/update behavior.
 
 These checks are not a full penetration test or approval to process real school payments.
 
@@ -71,7 +83,7 @@ These checks are not a full penetration test or approval to process real school 
 - Connect school sign-in, catalog, and wallet APIs through server-side adapters after the school provides their API specifications and an authorized test environment.
 - Connect the robot provider through the backend with delivery confirmation, failure handling, and payment reconciliation.
 - Keep integration secrets on the server; never put them in frontend code or `VITE_` variables.
-- Deploy the client and API to an HTTPS host with a configured database and migration process. A worker bundle is built, but hosting has not been deployed or verified. The Sites hosting plugin became unavailable during setup.
+- The demo is hosted on Sites with an HTTPS address and a D1 database. Real integrations still require their own deployment review and operational controls.
 - Test real integration failures, permissions, refunds, and delivery handling in the authorized sandbox before launch.
 
 `INTEGRATION_MODE` defaults to `demo`; unsupported modes reject API requests. Setting it to `live` does not enable real integrations. Environment options are documented in `.env.example`; the current scripts read process environment variables and do not automatically load that file.
