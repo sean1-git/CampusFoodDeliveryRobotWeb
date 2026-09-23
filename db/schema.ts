@@ -67,7 +67,10 @@ export const checkoutQueue = sqliteTable("checkout_queue", {
   location: text("location").notNull(),
   readyAt: integer("ready_at").notNull(),
   status: text("status").notNull().default("pending"),
+  kind: text("kind").notNull().default("purchase"),
+  expiresAt: integer("expires_at").notNull().default(0),
 }, (table) => [
   uniqueIndex("checkout_queue_session_request").on(table.sessionId, table.requestKey),
   index("checkout_queue_status_sequence").on(table.status, table.sequence),
+  index("checkout_queue_status_expiry").on(table.status, table.expiresAt),
 ]);

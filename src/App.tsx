@@ -41,8 +41,8 @@ export default function App() {
         )}
         {!online && (
           <div className="message warning" role="status">
-            You’re offline. Browse the sample menu and edit your saved bag.
-            Reconnect for checkout and current order status.
+            You’re offline. Browse your saved inventory and bag. Stock may have changed.
+            Reconnect to reserve or confirm items. Existing checkout timers continue offline.
           </div>
         )}
         {update && (
@@ -66,8 +66,18 @@ export default function App() {
             </button>
           </div>
         )}
-        <div className="sr-only" role="status" aria-live="polite">
+        <div className={notice ? "message" : "sr-only"} role="status" aria-live="polite">
           {notice}
+        </div>
+        <div className="message" role="status">
+          <div>
+            {store.inventoryUpdatedAt
+              ? <>Saved inventory · last updated {new Date(store.inventoryUpdatedAt).toLocaleString()}.</>
+              : "Sample menu only · no saved inventory update yet."}
+            {" "}Inventory refreshes every 15 minutes while online. Checkout always checks current stock.
+            {store.inventoryUnavailable && " The latest refresh failed; showing your last saved snapshot."}
+            {store.lastApiSuccessAt && <div>Last successful server contact: {new Date(store.lastApiSuccessAt).toLocaleString()}.</div>}
+          </div>
         </div>
         {view === "shop" ? (
           <div className="shop-layout">

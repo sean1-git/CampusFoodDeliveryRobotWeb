@@ -15,6 +15,13 @@
       "when": 1790130879582,
       "tag": "0001_modern_frightful_four",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790131398481,
+      "tag": "0002_grey_wolf_cub",
+      "breakpoints": true
     }
   ]
 }

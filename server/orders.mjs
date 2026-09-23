@@ -4,7 +4,7 @@
  */
 import catalog from "../shared/catalog.json" with { type: "json" };
 import { json, readSmallJson } from "./http.mjs";
-import { ensureInventory, settleTicks, TICK_MS } from "./inventory.mjs";
+import { ensureInventory, settleTicks, confirmHold, TICK_MS, HOLD_MS } from "./inventory.mjs";
 const uuid = () => crypto.randomUUID();
 const validId = (value) =>
   typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
@@ -31,7 +31,7 @@ export function publicOrder(row, now) {
   };
 }
 
-export async function createDemoOrder(request, db, session, now) {
+export async function createDemoOrder(request, db, session, now, kind = "purchase") {
   if (request.headers.get("x-csrf-token") !== session.csrf)
     return json(
       { error: "Session validation failed. Reload and try again." },
@@ -101,8 +101,12 @@ export async function createDemoOrder(request, db, session, now) {
   // never decide priority. ready_at is the end of a server-assigned 100 ms tick.
   await db
     .prepare(
-      `INSERT INTO checkout_queue (order_id, session_id, request_key, request_hash, items, subtotal, total, location, ready_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO checkout_queue (order_id, session_id, request_key, request_hash, items, subtotal, total, location, ready_at, kind, expires_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE ? <> 'reservation' OR NOT EXISTS (
+        SELECT 1 FROM checkout_queue WHERE session_id = ? AND kind = 'reservation'
+          AND status IN ('pending', 'held') AND expires_at > ? AND request_key <> ?
+      )
       ON CONFLICT(session_id, request_key) DO NOTHING`,
     )
     .bind(
@@ -115,13 +119,17 @@ export async function createDemoOrder(request, db, session, now) {
       total,
       body.location,
       (Math.floor(now / TICK_MS) + 1) * TICK_MS,
+      kind,
+      kind === "reservation" ? now + HOLD_MS : 0,
+      kind, session.id, now, key,
     )
     .run();
   const queued = await db
     .prepare("SELECT * FROM checkout_queue WHERE session_id = ? AND request_key = ?")
     .bind(session.id, key)
     .first();
-  if (queued.request_hash !== fingerprint)
+  if (!queued) return json({ code: "active_reservation", error: "You already have a checkout reservation. Finish or cancel it before starting another." }, 409);
+  if (queued.request_hash !== fingerprint || queued.kind !== kind)
     return json(
       { error: "This checkout ID was already used for a different cart." },
       409,
@@ -148,6 +156,13 @@ export async function checkoutResult(db, sessionId, key, now) {
   if (queued.status === "pending") {
     return json({ status: "pending", requestKey: key, retryAfterMs: TICK_MS }, 202);
   }
+  if (queued.kind === "reservation" && queued.status === "held" && queued.expires_at > now) {
+    return json({ status: "held", requestKey: key, expiresAt: queued.expires_at, serverNow: now });
+  }
+  if (queued.status === "expired" || (queued.status === "held" && queued.expires_at <= now)) {
+    return json({ code: "expired", error: "Your five-minute checkout reservation expired. All items were released; no demo funds were charged." }, 410);
+  }
+  if (queued.status === "cancelled") return json({ code: "cancelled", error: "Your checkout reservation was cancelled." }, 410);
   if (queued.status !== "accepted") {
     return json({ code: queued.status, error: queued.status === "sold_out"
       ? "An item in your bag sold out before your turn. No demo funds were charged. Please update your bag."
@@ -156,4 +171,23 @@ export async function checkoutResult(db, sessionId, key, now) {
   const order = await db.prepare("SELECT * FROM orders WHERE id = ? AND session_id = ?")
     .bind(queued.order_id, sessionId).first();
   return json(publicOrder(order, now), 201);
+}
+
+export async function reservationAction(request, db, session, key, action, now) {
+  if (request.headers.get("x-csrf-token") !== session.csrf) {
+    return json({ error: "Session validation failed. Reload and try again." }, 403);
+  }
+  const queued = await db.prepare("SELECT * FROM checkout_queue WHERE session_id = ? AND request_key = ? AND kind = 'reservation'")
+    .bind(session.id, key).first();
+  if (!queued) return json({ error: "Checkout not found." }, 404);
+  if (action === "cancel") {
+    await db.prepare("UPDATE checkout_queue SET status = 'cancelled' WHERE sequence = ? AND status IN ('pending', 'held')")
+      .bind(queued.sequence).run();
+    // A racing confirmation must be returned as a purchase, never as cancelled.
+    const result = await db.prepare("SELECT status FROM checkout_queue WHERE sequence = ?").bind(queued.sequence).first();
+    return result.status === "accepted" ? checkoutResult(db, session.id, key, now) : json({ status: "cancelled" });
+  }
+  if (queued.status === "pending") await settleTicks(db, now);
+  await confirmHold(db, session.id, key, now);
+  return checkoutResult(db, session.id, key, now);
 }

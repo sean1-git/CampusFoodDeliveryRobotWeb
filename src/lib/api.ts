@@ -18,6 +18,10 @@ export async function requestJson<T>(
   if (!response.ok)
     throw Object.assign(new Error(data.error || "Please try again."), {
       status: response.status,
+      code: data.code,
     });
+  const succeededAt = Date.now();
+  try { localStorage.setItem("campus-last-api-success", String(succeededAt)); } catch { /* Storage is optional. */ }
+  window.dispatchEvent(new CustomEvent("campus-api-success", { detail: succeededAt }));
   return data;
 }

@@ -3,7 +3,7 @@
  * Restricts order access to the current session and delegates checkout to orders.mjs.
  */
 import { json } from "./http.mjs";
-import { publicOrder, createDemoOrder, checkoutResult } from "./orders.mjs";
+import { publicOrder, createDemoOrder, checkoutResult, reservationAction } from "./orders.mjs";
 import { ensureInventory, availableInventory } from "./inventory.mjs";
 export { secureResponse } from "./http.mjs";
 import catalog from "../shared/catalog.json" with { type: "json" };
@@ -45,10 +45,10 @@ export async function handleApi(request, env, now = Date.now()) {
       return json({ error: "The demo store is temporarily unavailable." }, 503);
     if (url.pathname === "/api/catalog" && request.method === "GET") {
       await ensureInventory(db);
-      const stock = await availableInventory(db);
+      const stock = await availableInventory(db, now);
       return json({ ...catalog, products: catalog.products.map((p) => ({
         ...p, stock: stock.get(p.id) ?? 0,
-      })), mode: "demo" });
+      })), mode: "demo", inventoryUpdatedAt: now });
     }
     const sessionId = request.headers
       .get("cookie")
@@ -97,6 +97,13 @@ export async function handleApi(request, env, now = Date.now()) {
         { error: "Your demo session expired. Reload to start a new session." },
         401,
       );
+    if (url.pathname === "/api/reservations" && request.method === "POST") {
+      return await createDemoOrder(request, db, session, now, "reservation");
+    }
+    const reservationPath = /^\/api\/reservations\/([0-9a-f-]{36})\/(confirm|cancel)$/i.exec(url.pathname);
+    if (reservationPath && request.method === "POST") {
+      return await reservationAction(request, db, session, reservationPath[1], reservationPath[2].toLowerCase(), now);
+    }
     if (url.pathname.startsWith("/api/checkouts/") && request.method === "GET") {
       const key = url.pathname.slice("/api/checkouts/".length);
       if (!validId(key)) return json({ error: "Checkout not found." }, 404);

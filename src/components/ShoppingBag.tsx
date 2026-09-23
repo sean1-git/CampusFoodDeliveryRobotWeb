@@ -24,7 +24,10 @@ type Props = Pick<
   | "session"
   | "online"
   | "submitting"
-  | "setCheckout"
+  | "beginCheckout"
+  | "cancelCheckout"
+  | "reservation"
+  | "secondsLeft"
 >;
 export function ShoppingBag({
   catalog,
@@ -43,7 +46,10 @@ export function ShoppingBag({
   session,
   online,
   submitting,
-  setCheckout,
+  beginCheckout,
+  cancelCheckout,
+  reservation,
+  secondsLeft,
 }: Props) {
   return (
     <aside className="bag-panel" id="bag">
@@ -55,7 +61,7 @@ export function ShoppingBag({
           {quantity} {quantity === 1 ? "item" : "items"}
         </span>
       </div>
-      {quantity === 0 && !pending ? (
+      {quantity === 0 && !pending && !reservation ? (
         <div className="empty-bag">
           <span className="empty-icon">
             <Bag size={36} />
@@ -125,7 +131,7 @@ export function ShoppingBag({
               </label>
               <select
                 id="location"
-                value={pending?.body.location ?? location}
+                value={reservation?.body.location ?? pending?.body.location ?? location}
                 disabled={locked}
                 onChange={(event) => setLocation(event.target.value)}
               >
@@ -144,35 +150,52 @@ export function ShoppingBag({
                 physical robot will move.
                 {" "}Limited stock goes to the first valid checkout received.
               </p>
+              {reservation && (
+                <p className="checkout-note" role="status">
+                  {reservation.phase === "held"
+                    ? <>Items reserved · <strong>{Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}</strong> remaining. Unconfirmed checkout expires and all items are removed, even offline.</>
+                    : reservation.phase === "reserving"
+                      ? "Checking availability. Items are not reserved until the server confirms."
+                      : "Checking your last request. Keep the same checkout to avoid a duplicate purchase."}
+                </p>
+              )}
               <button
                 className="primary"
                 type="submit"
-                disabled={!online || !session || submitting}
+                disabled={!online || !session || submitting || reservation?.phase === "cancelling"}
               >
                 {submitting
-                  ? "Confirming your order…"
-                  : pending
+                  ? "Checking your checkout…"
+                  : pending || (reservation && reservation.phase !== "held")
                     ? "Retry this checkout"
-                    : "Place demo order"}
+                    : "Confirm demo purchase"}
               </button>
-              {!locked && (
+              {reservation && reservation.phase !== "confirming" && (
                 <button
                   type="button"
                   className="back"
-                  onClick={() => setCheckout(false)}
+                  disabled={!online || !session || submitting}
+                  onClick={() => void cancelCheckout()}
                 >
-                  Back to bag
+                  Cancel reservation & edit bag
                 </button>
               )}
             </form>
           ) : (
-            <button
+            <>
+              <label className="field-label" htmlFor="bag-location">Delivery location</label>
+              <select id="bag-location" value={location} onChange={(event) => setLocation(event.target.value)}>
+                {catalog.locations.map((place) => <option key={place}>{place}</option>)}
+              </select>
+              <p className="checkout-note">Enter checkout to hold your items for five minutes. Your wallet is charged only when you confirm.</p>
+              <button
               className="primary"
-              disabled={!online || !session}
-              onClick={() => setCheckout(true)}
+              disabled={!online || !session || submitting}
+              onClick={() => void beginCheckout()}
             >
-              Review demo order <span>→</span>
-            </button>
+              Reserve & review order <span>→</span>
+              </button>
+            </>
           )}
           {pending && (
             <p className="checkout-note">
