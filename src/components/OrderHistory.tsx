@@ -73,6 +73,24 @@ export function OrderHistory({ orders, setView }: Props) {
                 </li>
               ))}
             </ol>
+            <p className="delivery-eta" role="status">
+              {order.status === "preparing" ? (
+                <>
+                  Robot pickup ETA: live availability is not connected yet;
+                  this ETA will be added later. Demo delivery target: {new Date(order.arrivesAt).toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}.
+                </>
+              ) : order.status === "delivering" ? (
+                <>Estimated delivery at the site: {new Date(order.arrivesAt).toLocaleTimeString([], {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })} (demo estimate).</>
+              ) : (
+                <>Delivery completed at the site. Live robot ETA support will be added later.</>
+              )}
+            </p>
             <div className="order-info">
               <div>
                 <span>MEETING POINT</span>

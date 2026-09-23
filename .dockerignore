@@ -1,0 +1,10 @@
+node_modules
+.git
+.data
+dist
+dist-ssr
+.sites-runtime
+*.log
+.env
+.env.*
+!.env.example

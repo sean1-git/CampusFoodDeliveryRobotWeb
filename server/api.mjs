@@ -4,13 +4,18 @@
  */
 import { json } from "./http.mjs";
 import { publicOrder, createDemoOrder, checkoutResult, reservationAction } from "./orders.mjs";
-import { ensureInventory, availableInventory } from "./inventory.mjs";
+import { ensureInventory, availableInventory, ORDER_COOLDOWN_MS } from "./inventory.mjs";
 export { secureResponse } from "./http.mjs";
 import catalog from "../shared/catalog.json" with { type: "json" };
 
 const SESSION_AGE = 7 * 24 * 60 * 60 * 1000;
 const cookieName = "campus_demo_session";
 const uuid = () => crypto.randomUUID();
+const configuredOrigins = (env) =>
+  String(env.ALLOWED_ORIGINS || env.ALLOWED_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 const validId = (value) =>
   typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
 // This handler deliberately supports demo mode only. Real integration adapters
@@ -33,8 +38,9 @@ export async function handleApi(request, env, now = Date.now()) {
       });
     // Checkout must originate from this site; orders.mjs also checks the CSRF token.
     if (request.method === "POST") {
+      const allowed = new Set([url.origin, ...configuredOrigins(env)]);
       if (
-        request.headers.get("origin") !== url.origin ||
+        !allowed.has(request.headers.get("origin")) ||
         request.headers.get("sec-fetch-site") === "cross-site"
       ) {
         return json({ error: "Request origin is not allowed." }, 403);
@@ -81,10 +87,15 @@ export async function handleApi(request, env, now = Date.now()) {
         )
         .bind(session.id)
         .first();
+      const lastOrder = await db
+        .prepare("SELECT created_at FROM orders WHERE session_id = ? ORDER BY created_at DESC LIMIT 1")
+        .bind(session.id)
+        .first();
       return json(
         {
           csrf: session.csrf,
           balanceCents: catalog.initialBalanceCents - spent.spent,
+          nextOrderAt: lastOrder ? lastOrder.created_at + ORDER_COOLDOWN_MS : null,
           mode: "demo",
         },
         200,

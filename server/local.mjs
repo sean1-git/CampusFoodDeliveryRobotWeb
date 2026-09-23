@@ -28,6 +28,7 @@ const types = {
   ".ico": "image/x-icon",
 };
 const port = Number(process.env.PORT || 8787);
+const host = process.env.HOST || "127.0.0.1";
 const server = createServer(async (incoming, outgoing) => {
   try {
     const url = new URL(incoming.url, `http://${incoming.headers.host}`);
@@ -41,6 +42,10 @@ const server = createServer(async (incoming, outgoing) => {
       response = await handleApi(new Request(url, init), {
         DB,
         INTEGRATION_MODE: process.env.INTEGRATION_MODE || "demo",
+        // Vite serves the UI on 5173 and proxies API calls to this server.
+        ALLOWED_ORIGINS:
+          process.env.ALLOWED_ORIGINS ||
+          "http://localhost:5173,http://127.0.0.1:5173",
       });
     } else {
       let file = resolve(root, "." + decodeURIComponent(url.pathname));
@@ -69,8 +74,8 @@ const server = createServer(async (incoming, outgoing) => {
     outgoing.end("The local server could not handle this request.");
   }
 });
-server.listen(port, "127.0.0.1", () =>
-  console.log(`Campus Store demo: http://localhost:${port}`),
+server.listen(port, host, () =>
+  console.log(`Campus Store demo: http://${host}:${port}`),
 );
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () =>

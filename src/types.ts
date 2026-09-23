@@ -14,7 +14,12 @@ export type Reservation = Pending & {
   phase: "reserving" | "held" | "confirming" | "cancelling";
 };
 export type Cart = Record<string, number>;
-export type Session = { csrf: string; balanceCents: number; mode: string };
+export type Session = {
+  csrf: string;
+  balanceCents: number;
+  nextOrderAt: number | null;
+  mode: string;
+};
 export type Order = {
   id: string;
   items: { id: string; name: string; priceCents: number; quantity: number }[];

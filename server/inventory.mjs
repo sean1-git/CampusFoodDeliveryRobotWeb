@@ -3,6 +3,7 @@ import catalog from "../shared/catalog.json" with { type: "json" };
 export const TICK_MS = 100;
 export const INITIAL_STOCK = 20;
 export const HOLD_MS = 5 * 60 * 1000;
+export const ORDER_COOLDOWN_MS = 60 * 60 * 1000;
 
 // Expired holds stop counting immediately, even if no cleanup request has run.
 const heldQuantity = `(SELECT COALESCE(SUM(json_extract(held.value, '$.quantity')), 0)
@@ -35,6 +36,11 @@ const stockFits = `NOT EXISTS (
       - ${heldQuantity}
 )`;
 const fundsFit = `q.total <= ? - (SELECT COALESCE(SUM(total), 0) FROM orders WHERE session_id = q.session_id)`;
+const cooldownFit = `NOT EXISTS (
+  SELECT 1 FROM orders recent
+  WHERE recent.session_id = q.session_id
+    AND recent.created_at > ? - ?
+)`;
 const head = `q.status = 'pending' AND q.ready_at <= ?
   AND q.sequence = (SELECT MIN(sequence) FROM checkout_queue WHERE status = 'pending')`;
 
@@ -48,16 +54,17 @@ export async function settleTicks(db, now) {
   const statements = queued.results.flatMap(({ sequence }) => [
     db.prepare(`UPDATE checkout_queue AS q SET status = CASE
       WHEN q.expires_at <= ? THEN 'expired'
+      WHEN NOT (${cooldownFit}) THEN 'order_cooldown'
       WHEN NOT (${fundsFit}) THEN 'insufficient_funds'
       WHEN ${stockFits} THEN 'held' ELSE 'sold_out' END
       WHERE q.kind = 'reservation' AND q.sequence = ? AND ${head}`)
-      .bind(now, catalog.initialBalanceCents, now, sequence, now),
+      .bind(now, now, ORDER_COOLDOWN_MS, catalog.initialBalanceCents, now, sequence, now),
     db.prepare(`INSERT INTO orders
       (id, session_id, request_key, request_hash, items, subtotal, total, location, created_at)
       SELECT q.order_id, q.session_id, q.request_key, q.request_hash, q.items, q.subtotal, q.total, q.location, ?
-      FROM checkout_queue q WHERE q.kind = 'purchase' AND q.sequence = ? AND ${head} AND ${fundsFit} AND ${stockFits}
+      FROM checkout_queue q WHERE q.kind = 'purchase' AND q.sequence = ? AND ${head} AND ${fundsFit} AND ${stockFits} AND ${cooldownFit}
       ON CONFLICT(session_id, request_key) DO NOTHING`)
-      .bind(now, sequence, now, catalog.initialBalanceCents, now),
+      .bind(now, sequence, now, catalog.initialBalanceCents, now, now, ORDER_COOLDOWN_MS),
     db.prepare(`INSERT INTO order_items (order_id, product_id, quantity)
       SELECT o.id, json_extract(item.value, '$.id'), json_extract(item.value, '$.quantity')
       FROM checkout_queue q JOIN orders o ON o.id = q.order_id, json_each(o.items) item
@@ -65,9 +72,10 @@ export async function settleTicks(db, now) {
       ON CONFLICT(order_id, product_id) DO NOTHING`).bind(sequence),
     db.prepare(`UPDATE checkout_queue AS q SET status = CASE
       WHEN EXISTS (SELECT 1 FROM orders WHERE id = q.order_id) THEN 'accepted'
+      WHEN NOT (${cooldownFit}) THEN 'order_cooldown'
       WHEN NOT (${fundsFit}) THEN 'insufficient_funds' ELSE 'sold_out' END
       WHERE q.kind = 'purchase' AND q.sequence = ? AND ${head}`)
-      .bind(catalog.initialBalanceCents, sequence, now),
+      .bind(now, ORDER_COOLDOWN_MS, catalog.initialBalanceCents, sequence, now),
   ]);
   await db.batch(statements);
 }
@@ -81,9 +89,9 @@ export async function confirmHold(db, sessionId, key, now) {
       (id, session_id, request_key, request_hash, items, subtotal, total, location, created_at)
       SELECT q.order_id, q.session_id, q.request_key, q.request_hash, q.items, q.subtotal, q.total, q.location, ?
       FROM checkout_queue q WHERE q.session_id = ? AND q.request_key = ?
-        AND q.kind = 'reservation' AND q.status = 'held' AND q.expires_at > ? AND ${fundsFit}
+        AND q.kind = 'reservation' AND q.status = 'held' AND q.expires_at > ? AND ${fundsFit} AND ${cooldownFit}
       ON CONFLICT(session_id, request_key) DO NOTHING`)
-      .bind(now, sessionId, key, now, catalog.initialBalanceCents),
+      .bind(now, sessionId, key, now, catalog.initialBalanceCents, now, ORDER_COOLDOWN_MS),
     db.prepare(`INSERT INTO order_items (order_id, product_id, quantity)
       SELECT o.id, json_extract(item.value, '$.id'), json_extract(item.value, '$.quantity')
       FROM checkout_queue q JOIN orders o ON o.id = q.order_id, json_each(o.items) item
@@ -92,8 +100,9 @@ export async function confirmHold(db, sessionId, key, now) {
     db.prepare(`UPDATE checkout_queue AS q SET status = CASE
       WHEN EXISTS (SELECT 1 FROM orders WHERE id = q.order_id) THEN 'accepted'
       WHEN q.expires_at <= ? THEN 'expired'
+      WHEN NOT (${cooldownFit}) THEN 'order_cooldown'
       ELSE 'insufficient_funds' END
       WHERE q.session_id = ? AND q.request_key = ? AND q.kind = 'reservation' AND q.status = 'held'`)
-      .bind(now, sessionId, key),
+      .bind(now, now, ORDER_COOLDOWN_MS, sessionId, key),
   ]);
 }

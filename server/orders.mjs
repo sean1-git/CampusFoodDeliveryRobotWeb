@@ -4,10 +4,37 @@
  */
 import catalog from "../shared/catalog.json" with { type: "json" };
 import { json, readSmallJson } from "./http.mjs";
-import { ensureInventory, settleTicks, confirmHold, TICK_MS, HOLD_MS } from "./inventory.mjs";
+import {
+  ensureInventory,
+  settleTicks,
+  confirmHold,
+  TICK_MS,
+  HOLD_MS,
+  ORDER_COOLDOWN_MS,
+} from "./inventory.mjs";
 const uuid = () => crypto.randomUUID();
 const validId = (value) =>
   typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
+
+async function recentOrder(db, sessionId, now) {
+  const row = await db
+    .prepare("SELECT created_at FROM orders WHERE session_id = ? ORDER BY created_at DESC LIMIT 1")
+    .bind(sessionId)
+    .first();
+  if (!row || row.created_at + ORDER_COOLDOWN_MS <= now) return null;
+  return { ...row, retryAt: row.created_at + ORDER_COOLDOWN_MS };
+}
+
+function orderCooldown(retryAt) {
+  return json(
+    {
+      code: "order_cooldown",
+      retryAt,
+      error: "Multiple order requests detected. You can place only one robot order per hour. Please wait before placing another order.",
+    },
+    409,
+  );
+}
 
 // Convert a database row into the response shape and derive progress from elapsed time.
 export function publicOrder(row, now) {
@@ -89,25 +116,39 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
       ? json(publicOrder(existing, now))
       : json(
           { error: "This checkout ID was already used for a different cart." },
-          409,
-        );
+        409,
+      );
+  const queued = await db
+    .prepare("SELECT * FROM checkout_queue WHERE session_id = ? AND request_key = ?")
+    .bind(session.id, key)
+    .first();
+  if (!existing && !queued) {
+    const recent = await recentOrder(db, session.id, now);
+    if (recent) return orderCooldown(recent.retryAt);
+  }
   const subtotal = items.reduce(
     (sum, item) => sum + item.priceCents * item.quantity,
     0,
   );
   const total = subtotal + catalog.deliveryFeeCents;
   await ensureInventory(db);
+  if (kind === "reservation") {
+    // Expired holds are released before the database-level one-active-checkout
+    // constraint is evaluated. This keeps a closed tab from blocking a new one.
+    await db.prepare(
+      "UPDATE checkout_queue SET status = 'expired' WHERE session_id = ? AND kind = 'reservation' AND status = 'held' AND expires_at <= ?",
+    ).bind(session.id, now).run();
+  }
   // sequence is assigned by the shared database; client timestamps and IDs
   // never decide priority. ready_at is the end of a server-assigned 100 ms tick.
   await db
     .prepare(
-      `INSERT INTO checkout_queue (order_id, session_id, request_key, request_hash, items, subtotal, total, location, ready_at, kind, expires_at)
+      `INSERT OR IGNORE INTO checkout_queue (order_id, session_id, request_key, request_hash, items, subtotal, total, location, ready_at, kind, expires_at)
       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       WHERE ? <> 'reservation' OR NOT EXISTS (
         SELECT 1 FROM checkout_queue WHERE session_id = ? AND kind = 'reservation'
           AND status IN ('pending', 'held') AND expires_at > ? AND request_key <> ?
-      )
-      ON CONFLICT(session_id, request_key) DO NOTHING`,
+      )`,
     )
     .bind(
       uuid(),
@@ -124,20 +165,20 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
       kind, session.id, now, key,
     )
     .run();
-  const queued = await db
+  const queuedResult = await db
     .prepare("SELECT * FROM checkout_queue WHERE session_id = ? AND request_key = ?")
     .bind(session.id, key)
     .first();
-  if (!queued) return json({ code: "active_reservation", error: "You already have a checkout reservation. Finish or cancel it before starting another." }, 409);
-  if (queued.request_hash !== fingerprint || queued.kind !== kind)
+  if (!queuedResult) return json({ code: "active_reservation", error: "You already have a checkout reservation. Finish or cancel it before starting another." }, 409);
+  if (queuedResult.request_hash !== fingerprint || queuedResult.kind !== kind)
     return json(
       { error: "This checkout ID was already used for a different cart." },
       409,
     );
   // A request drives its tick while alive. Pending state is durable: a later
   // retry or status poll resumes settlement after a disconnect/Worker restart.
-  if (queued.status === "pending") {
-    await new Promise((resolve) => setTimeout(resolve, Math.min(TICK_MS, Math.max(0, queued.ready_at - Date.now()))));
+  if (queuedResult.status === "pending") {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(TICK_MS, Math.max(0, queuedResult.ready_at - Date.now()))));
   }
   return checkoutResult(db, session.id, key, Date.now());
 }
@@ -163,6 +204,10 @@ export async function checkoutResult(db, sessionId, key, now) {
     return json({ code: "expired", error: "Your five-minute checkout reservation expired. All items were released; no demo funds were charged." }, 410);
   }
   if (queued.status === "cancelled") return json({ code: "cancelled", error: "Your checkout reservation was cancelled." }, 410);
+  if (queued.status === "order_cooldown") {
+    const recent = await recentOrder(db, sessionId, now);
+    return orderCooldown(recent?.retryAt ?? now + ORDER_COOLDOWN_MS);
+  }
   if (queued.status !== "accepted") {
     return json({ code: queued.status, error: queued.status === "sold_out"
       ? "An item in your bag sold out before your turn. No demo funds were charged. Please update your bag."

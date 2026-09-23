@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { handleApi } from "../server/api.mjs";
 import { openDatabase } from "../server/local-db.mjs";
+import { ORDER_COOLDOWN_MS } from "../server/inventory.mjs";
 const origin = "https://campus.test";
 const basket = {
   items: [{ id: "sandwich", quantity: 1 }],
@@ -25,6 +26,7 @@ async function fixture(t) {
     body,
     key = crypto.randomUUID(),
     extras = {},
+    now = Date.now(),
   ) {
     return handleApi(
       new Request(origin + path, {
@@ -40,6 +42,7 @@ async function fixture(t) {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       }),
       env,
+      now,
     );
   }
   return { env, user, request };
@@ -103,6 +106,23 @@ test("concurrent different orders cannot overspend demo funds", async (t) => {
     1650,
   );
 });
+test("a session can place only one order per hour", async (t) => {
+  const f = await fixture(t),
+    u = await f.user();
+  const first = await (await f.request(u, "/api/orders", "POST", basket)).json();
+  assert.equal((await f.request(u, "/api/session")).status, 200);
+  const blocked = await f.request(u, "/api/orders", "POST", basket, crypto.randomUUID(), {}, first.createdAt + 1000);
+  assert.equal(blocked.status, 409);
+  const blockedBody = await blocked.json();
+  assert.equal(blockedBody.code, "order_cooldown");
+  assert.match(blockedBody.error, /multiple order requests/i);
+  assert.equal(blockedBody.retryAt, first.createdAt + ORDER_COOLDOWN_MS);
+  const allowedKey = crypto.randomUUID();
+  const allowed = await f.request(u, "/api/orders", "POST", basket, allowedKey, {}, first.createdAt + ORDER_COOLDOWN_MS);
+  assert.equal(allowed.status, 202);
+  const settled = await f.request(u, `/api/checkouts/${allowedKey}`, "GET", undefined, allowedKey, {}, first.createdAt + ORDER_COOLDOWN_MS + 100);
+  assert.equal(settled.status, 201);
+});
 test("order ownership enforced for reads and lists", async (t) => {
   const f = await fixture(t),
     a = await f.user(),
@@ -137,6 +157,20 @@ test("invalid CSRF, cross-origin and unauthenticated checkout rejected", async (
       .status,
     401,
   );
+});
+test("configured frontend origin is allowed through the local API proxy", async (t) => {
+  const f = await fixture(t),
+    u = await f.user();
+  f.env.ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173";
+  const response = await f.request(
+    u,
+    "/api/orders",
+    "POST",
+    basket,
+    crypto.randomUUID(),
+    { origin: "http://localhost:5173" },
+  );
+  assert.equal(response.status, 201);
 });
 test("negative quantities, duplicate items and unknown locations rejected", async (t) => {
   const f = await fixture(t),

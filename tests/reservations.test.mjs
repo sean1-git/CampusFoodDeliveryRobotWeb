@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { openDatabase } from "../server/local-db.mjs";
 import { handleApi } from "../server/api.mjs";
-import { ensureInventory, availableInventory, HOLD_MS } from "../server/inventory.mjs";
+import { ensureInventory, availableInventory, HOLD_MS, ORDER_COOLDOWN_MS } from "../server/inventory.mjs";
 
 const origin = "https://campus.test";
 const body = { items: [{ id: "sandwich", quantity: 1 }], location: "Library entrance" };
@@ -103,6 +103,14 @@ test("holds are session-owned, CSRF protected, and limited to one active checkou
   assert.equal((await availableInventory(f.DB)).get("coffee"), 20);
 });
 
+test("simultaneous tabs cannot create two active reservations for one session", async (t) => {
+  const f = await fixture(t);
+  const keys = [crypto.randomUUID(), crypto.randomUUID()];
+  const results = await Promise.all(keys.map((key) => f.reserve(f.users[0], key)));
+  assert.deepEqual(results.map((result) => result.body.status || result.body.code).sort(), ["active_reservation", "held"]);
+  assert.equal((await f.DB.prepare("SELECT COUNT(*) AS count FROM checkout_queue WHERE session_id = ? AND status = 'held'").bind(f.users[0].cookie.split("=")[1]).first()).count, 1);
+});
+
 test("catalog reports the server inventory timestamp and excludes expired holds", async (t) => {
   const f = await fixture(t), hold = await f.reserve();
   const now = hold.body.expiresAt;
@@ -118,9 +126,22 @@ test("if funds are spent elsewhere, confirmation rejects without charging and re
   });
   assert.equal(spent.status, 201);
   const confirmation = await f.call(f.users[0], `/api/reservations/${hold.key}/confirm`, { method: "POST" });
-  assert.equal(confirmation.body.code, "insufficient_funds");
+  assert.equal(confirmation.body.code, "order_cooldown");
   assert.equal((await availableInventory(f.DB)).get("sandwich"), 1);
   assert.equal((await f.call(f.users[0], "/api/session")).body.balanceCents, 400);
+});
+
+test("a completed order blocks another robot order for one hour", async (t) => {
+  const f = await fixture(t);
+  const first = await f.call(f.users[0], "/api/orders", { method: "POST", payload: body });
+  assert.equal(first.status, 201);
+  const blocked = await f.reserve(f.users[0], crypto.randomUUID(), {
+    ...body,
+    items: [{ id: "coffee", quantity: 1 }],
+  });
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.code, "order_cooldown");
+  assert.equal(blocked.body.retryAt, first.body.createdAt + ORDER_COOLDOWN_MS);
 });
 
 test("racing cancellation and confirmation produce only one terminal outcome", async (t) => {

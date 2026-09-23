@@ -10,12 +10,13 @@ import { ShoppingBag } from "./components/ShoppingBag";
 import { OrderHistory } from "./components/OrderHistory";
 import { Bag } from "./components/BagIcon";
 import { money } from "./lib/money";
+import { formatOrderCooldown } from "./lib/orderCooldown";
 import "./App.css";
 
 export default function App() {
   const store = useCampusStore();
   const pwa = usePwa();
-  const { view, online, locked, error, booting, notice, quantity, total } =
+  const { view, online, locked, error, booting, notice, quantity, total, orderCooldownMs, nextOrderAt } =
     store;
   const { installHelp, setInstallHelp, update } = pwa;
   return (
@@ -64,6 +65,12 @@ export default function App() {
             <button onClick={() => void store.reconnect()} disabled={booting}>
               Reconnect
             </button>
+          </div>
+        )}
+        {orderCooldownMs > 0 && nextOrderAt && (
+          <div className="message warning" role="status" aria-live="polite">
+            <strong>Order cooldown active.</strong> Multiple order requests were detected, so only one robot order is allowed per hour.
+            {" "}Time remaining: <strong>{formatOrderCooldown(orderCooldownMs)}</strong>.
           </div>
         )}
         <div className={notice ? "message" : "sr-only"} role="status" aria-live="polite">

@@ -22,6 +22,17 @@ npm run dev
 
 This starts the API on port 8787 and Vite normally on port 5173. Read the terminal for the actual Vite URL. If an API server is already running, use `npm run dev:web` to start only Vite. Changes to the backend require restarting a server started with `npm start`.
 
+## Temporary Google Cloud Run deployment
+
+The included `Dockerfile` builds the app for Cloud Run. After installing and authenticating the Google Cloud CLI, select project `projectdemo-509505` and deploy with a single instance while this demo uses local SQLite:
+
+```powershell
+gcloud config set project projectdemo-509505
+gcloud run deploy campus-store-demo --source . --region us-west1 --allow-unauthenticated --max 1 --min 1
+```
+
+This is suitable for a temporary demo only. The SQLite file is inside the container, so orders disappear if Cloud Run replaces the instance. A durable deployment should move orders and inventory to Cloud SQL or another managed database before production use.
+
 ## PWA behavior
 
 The production build includes a web manifest, icons, and a service worker. Service workers are deliberately disabled in the Vite development build. Open the production URL while online first so the app can cache its static files. Then the sample menu and saved bag remain available when the server cannot be reached. Checkout and current order status require the API; payment requests are never queued for offline replay.
@@ -48,7 +59,17 @@ Use the app's Install app control for browser-specific guidance. Browser support
 | `scripts/build-pwa.mjs` | Generates the production service worker |
 | `tests/` | API and PWA checks |
 
-Demo order data is stored locally in `.data/campus-demo.sqlite`. Demo sessions use cookies; there is no school login. Cart contents are stored in the browser. Each session starts with $50 in simulated funds. A demo delivery costs $1, and order progress is simulated over roughly 65 seconds.
+Demo order data is stored locally in `.data/campus-demo.sqlite`. Demo sessions use cookies; there is no school login. Cart contents are stored in the browser. Each session starts with $50 in simulated funds. A demo delivery costs $1, and order progress is simulated over roughly 65 seconds. A session may place only one robot order per hour; the API enforces the cooldown even when multiple tabs or checkout requests race. Live robot pickup availability and ETAs are placeholders for a later integration.
+
+### Shared login, checkout identity, and multiple tabs
+
+Every tab on the same origin sends the `campus_demo_session` HttpOnly cookie, so tabs share one server session, CSRF token, wallet, order history, and checkout ownership. Checkout attempts use UUID idempotency keys and are stored in `checkout_queue`; a unique SQL partial index allows only one pending or held reservation per session. The server remains authoritative if a tab is duplicated, refreshed, or sends concurrent requests.
+
+Name and student identity are intentionally not collected by this demo. School SSO can provide the identity later; the resulting SSO subject should be mapped to an internal user record before attaching it to an order.
+
+`BroadcastChannel` with a `localStorage` fallback synchronizes cart, checkout, session, and order events between tabs. The receiving tab reloads authoritative server state instead of trusting the broadcast payload, so the UI updates quickly without weakening the database guarantees.
+
+The UI follows Material 3 tokens and includes a small self-contained Material Web-compatible layer at `src/lib/materialWebFallback.ts` for assist chips and outlined controls. It keeps the app bundle self-contained until the official `@material/web` dependency can be installed.
 
 ## Shared stock and checkout ticks
 

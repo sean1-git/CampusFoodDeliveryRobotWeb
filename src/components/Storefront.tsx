@@ -43,6 +43,9 @@ export function Storefront({
             delivery buddy.
           </strong>
           <span>Robot delivery · demo</span>
+          <span className="availability-note">
+            Live robot pickup availability and ETA will be added later.
+          </span>
           <span className="fee">
             {money(catalog.deliveryFeeCents)} delivery
           </span>
@@ -54,14 +57,14 @@ export function Storefront({
       </div>
       <div className="filters" aria-label="Product categories">
         {["All items", "Lunch", "Drinks", "Snacks"].map((label) => (
-          <button
+          <md-assist-chip
             key={label}
-            aria-pressed={filter === label}
+            aria-pressed={filter === label ? "true" : undefined}
             className={filter === label ? "selected" : ""}
             onClick={() => setFilter(label)}
           >
             {label}
-          </button>
+          </md-assist-chip>
         ))}
       </div>
       <div className="products">

@@ -4,6 +4,7 @@ import type { Cart, HeldCheckout, Order, Pending, Product, QueuedCheckout, Reser
 import { requestJson } from "../lib/api";
 import { initialCart, load, save } from "../lib/storage";
 import { readReservation, reservationExpired, RESERVATION_KEY } from "../lib/inventoryCache";
+import { publishTabEvent, subscribeTabEvents } from "../lib/tabSync";
 import { useInventory } from "./useInventory";
 
 type CheckoutReply = Order | HeldCheckout | QueuedCheckout;
@@ -35,9 +36,11 @@ export function useCampusStore() {
   });
 
   const writeHold = useCallback((next: Reservation | null) => {
+    if (JSON.stringify(reservationRef.current) === JSON.stringify(next)) return;
     save(RESERVATION_KEY, next);
     reservationRef.current = next;
     setReservation(next);
+    publishTabEvent("checkout");
   }, []);
   const clearExpired = useCallback(() => {
     writeHold(null);
@@ -95,7 +98,14 @@ export function useCampusStore() {
     }
   }, [acceptReply, clearExpired, writeHold]);
 
-  useEffect(() => { save("campus-cart", cart); }, [cart]);
+  const cartSnapshot = useRef(JSON.stringify(cart));
+  useEffect(() => {
+    const next = JSON.stringify(cart);
+    if (next === cartSnapshot.current) return;
+    cartSnapshot.current = next;
+    save("campus-cart", cart);
+    publishTabEvent("cart");
+  }, [cart]);
   useEffect(() => {
     const apiSuccess = (event: Event) => setLastApiSuccessAt((event as CustomEvent<number>).detail);
     const onOnline = () => setOnline(true);
@@ -110,6 +120,22 @@ export function useCampusStore() {
     };
   }, []);
 
+  useEffect(() => subscribeTabEvents((type) => {
+    if (type === "cart" || type === "checkout") {
+      const nextCart = initialCart();
+      setCart((current) => JSON.stringify(current) === JSON.stringify(nextCart) ? current : nextCart);
+    }
+    if (type === "checkout") {
+      const nextHold = restoreHold();
+      if (JSON.stringify(reservationRef.current) !== JSON.stringify(nextHold)) {
+        reservationRef.current = nextHold;
+        setReservation(nextHold);
+      }
+      void reconcileHold();
+    }
+    if (type === "session" || type === "orders") void refresh().catch(() => {});
+  }), [reconcileHold, refresh]);
+
   useEffect(() => {
     if (!online) { setBooting(false); return; }
     let active = true;
@@ -123,6 +149,9 @@ export function useCampusStore() {
   const activeOrders = orders.filter((o) => o.status !== "delivered").length;
   const csrf = session?.csrf;
   const hasCheckout = !!reservation || !!pending;
+  const orderCooldownMs = session?.nextOrderAt
+    ? Math.max(0, session.nextOrderAt - clock)
+    : 0;
   useEffect(() => {
     if (!online || !csrf || (!activeOrders && !hasCheckout)) return;
     const timer = setInterval(() => {
@@ -188,10 +217,11 @@ export function useCampusStore() {
       setPending(null);
     }
     setError(problem.status ? problem.message : "Connection interrupted. Your checkout ID is saved. Reconnect and retry to check its outcome safely.");
+    if (problem.code === "order_cooldown") void refresh().catch(() => {});
     void refreshInventory(true).catch(() => {});
   }
   async function beginCheckout() {
-    if (!online || !session || busy.current || pending || !quantity) return;
+    if (!online || !session || busy.current || pending || !quantity || orderCooldownMs > 0) return;
     busy.current = true;
     setSubmitting(true);
     setError("");
@@ -264,6 +294,7 @@ export function useCampusStore() {
 
   return { ...inventory, session, cart, orders, view, setView, filter, setFilter, location, setLocation,
     checkout, online, error, notice, submitting, pending, reservation, secondsLeft, lastApiSuccessAt,
+    orderCooldownMs, nextOrderAt: session?.nextOrderAt ?? null,
     booting, lines, quantity, subtotal, total, locked, activeOrders, change, beginCheckout, placeOrder,
     cancelCheckout, reconnect };
 }

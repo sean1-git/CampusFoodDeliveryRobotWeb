@@ -3,6 +3,7 @@
  * Checkout calls the store hook; the server validates prices and demo funds.
  */
 import { money } from "../lib/money";
+import { formatOrderCooldown } from "../lib/orderCooldown";
 import type { CampusStore } from "../hooks/useCampusStore";
 import { Bag } from "./BagIcon";
 
@@ -28,7 +29,10 @@ type Props = Pick<
   | "cancelCheckout"
   | "reservation"
   | "secondsLeft"
+  | "orderCooldownMs"
+  | "nextOrderAt"
 >;
+
 export function ShoppingBag({
   catalog,
   quantity,
@@ -50,6 +54,8 @@ export function ShoppingBag({
   cancelCheckout,
   reservation,
   secondsLeft,
+  orderCooldownMs,
+  nextOrderAt,
 }: Props) {
   return (
     <aside className="bag-panel" id="bag">
@@ -187,13 +193,17 @@ export function ShoppingBag({
               <select id="bag-location" value={location} onChange={(event) => setLocation(event.target.value)}>
                 {catalog.locations.map((place) => <option key={place}>{place}</option>)}
               </select>
-              <p className="checkout-note">Enter checkout to hold your items for five minutes. Your wallet is charged only when you confirm.</p>
+              <p className="checkout-note">
+                {orderCooldownMs > 0 && nextOrderAt
+                  ? <>One robot order per hour. Multiple order requests are blocked. Time remaining: <strong>{formatOrderCooldown(orderCooldownMs)}</strong>; your next order is available at {new Date(nextOrderAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.</>
+                  : <>Enter checkout to hold your items for five minutes. Your wallet is charged only when you confirm.</>}
+              </p>
               <button
               className="primary"
-              disabled={!online || !session || submitting}
+              disabled={!online || !session || submitting || orderCooldownMs > 0}
               onClick={() => void beginCheckout()}
             >
-              Reserve & review order <span>→</span>
+              {orderCooldownMs > 0 ? "Order available later" : <>Reserve & review order <span>→</span></>}
               </button>
             </>
           )}
