@@ -1,4 +1,8 @@
-# Campus Store PWA
+# CampusFoodDeliveryRobotWeb — Campus Store PWA
+
+Food delivery prototype for campus shopping and robot delivery.
+
+Hosted Site: [UCM Campus Store](https://ucm-campus-store.seanlee5697.chatgpt.site).
 
 A React + TypeScript campus-store prototype with a Node/SQLite demo API. All products, funds, and robot delivery statuses are simulated. It does not connect to the school or dispatch robots.
 
