@@ -4,8 +4,12 @@
  */
 import type sampleCatalog from "../shared/catalog.json";
 
-export type Product = (typeof sampleCatalog.products)[number] & { stock?: number };
-export type Catalog = Omit<typeof sampleCatalog, "products"> & { products: Product[]; inventoryUpdatedAt?: number };
+export type Product = (typeof sampleCatalog.products)[number] & {
+  stock?: number;
+  stockUpdatedAt?: number | null;
+  syncedAt?: number | null;
+};
+export type Catalog = Omit<typeof sampleCatalog, "products"> & { products: Product[]; responseGeneratedAt?: number | null };
 export type QueuedCheckout = { status: "pending"; requestKey: string; retryAfterMs: number };
 export type HeldCheckout = { status: "held"; requestKey: string; expiresAt: number; serverNow: number };
 export type Reservation = Pending & {
@@ -16,6 +20,7 @@ export type Reservation = Pending & {
 export type Cart = Record<string, number>;
 export type Session = {
   csrf: string;
+  accountId: string;
   balanceCents: number;
   nextOrderAt: number | null;
   mode: string;

@@ -8,6 +8,9 @@ import { resolve, extname, sep } from "node:path";
 import { Readable } from "node:stream";
 import { handleApi, secureResponse } from "./api.mjs";
 import { openDatabase } from "./local-db.mjs";
+import { createRequestUrlResolver, InvalidRequestUrl } from "./request-url.mjs";
+
+const requestUrl = createRequestUrlResolver(process.env);
 
 mkdirSync(new URL("../.data/", import.meta.url), { recursive: true });
 const DB = openDatabase(
@@ -31,7 +34,7 @@ const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "127.0.0.1";
 const server = createServer(async (incoming, outgoing) => {
   try {
-    const url = new URL(incoming.url, `http://${incoming.headers.host}`);
+    const url = requestUrl(incoming);
     let response;
     if (url.pathname.startsWith("/api/")) {
       const init = { method: incoming.method, headers: incoming.headers };
@@ -42,10 +45,13 @@ const server = createServer(async (incoming, outgoing) => {
       response = await handleApi(new Request(url, init), {
         DB,
         INTEGRATION_MODE: process.env.INTEGRATION_MODE || "demo",
+        CANONICAL_ORIGIN: process.env.CANONICAL_ORIGIN,
+        NODE_ENV: process.env.NODE_ENV,
         // Vite serves the UI on 5173 and proxies API calls to this server.
         ALLOWED_ORIGINS:
           process.env.ALLOWED_ORIGINS ||
-          "http://localhost:5173,http://127.0.0.1:5173",
+          process.env.ALLOWED_ORIGIN ||
+          (process.env.NODE_ENV === "production" ? "" : "http://localhost:5173,http://127.0.0.1:5173"),
       });
     } else {
       let file = resolve(root, "." + decodeURIComponent(url.pathname));
@@ -69,9 +75,12 @@ const server = createServer(async (incoming, outgoing) => {
     const secured = secureResponse(response);
     outgoing.writeHead(secured.status, Object.fromEntries(secured.headers));
     outgoing.end(Buffer.from(await secured.arrayBuffer()));
-  } catch {
-    outgoing.writeHead(500);
-    outgoing.end("The local server could not handle this request.");
+  } catch (error) {
+    outgoing.writeHead(error instanceof InvalidRequestUrl ? 400 : 500, {
+      "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store",
+    });
+    outgoing.end(error instanceof InvalidRequestUrl ? "Invalid request URL or proxy headers."
+      : "The local server could not handle this request.");
   }
 });
 server.listen(port, host, () =>

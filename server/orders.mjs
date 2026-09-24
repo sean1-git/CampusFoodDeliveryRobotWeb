@@ -10,19 +10,18 @@ import {
   confirmHold,
   TICK_MS,
   HOLD_MS,
-  ORDER_COOLDOWN_MS,
 } from "./inventory.mjs";
 const uuid = () => crypto.randomUUID();
 const validId = (value) =>
   typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
 
-async function recentOrder(db, sessionId, now) {
+async function recentOrder(db, accountId, now) {
   const row = await db
-    .prepare("SELECT created_at FROM orders WHERE session_id = ? ORDER BY created_at DESC LIMIT 1")
-    .bind(sessionId)
+    .prepare("SELECT cooldown_until FROM accounts WHERE id = ?")
+    .bind(accountId)
     .first();
-  if (!row || row.created_at + ORDER_COOLDOWN_MS <= now) return null;
-  return { ...row, retryAt: row.created_at + ORDER_COOLDOWN_MS };
+  if (!row || row.cooldown_until <= now) return null;
+  return { retryAt: row.cooldown_until };
 }
 
 function orderCooldown(retryAt) {
@@ -108,8 +107,8 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
   items.sort((a, b) => a.id.localeCompare(b.id));
   const fingerprint = JSON.stringify({ items, location: body.location });
   const existing = await db
-    .prepare("SELECT * FROM orders WHERE session_id = ? AND request_key = ?")
-    .bind(session.id, key)
+    .prepare("SELECT * FROM orders WHERE account_id = ? AND request_key = ?")
+    .bind(session.account_id, key)
     .first();
   if (existing)
     return existing.request_hash === fingerprint
@@ -119,11 +118,11 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
         409,
       );
   const queued = await db
-    .prepare("SELECT * FROM checkout_queue WHERE session_id = ? AND request_key = ?")
-    .bind(session.id, key)
+    .prepare("SELECT * FROM checkout_queue WHERE account_id = ? AND request_key = ?")
+    .bind(session.account_id, key)
     .first();
   if (!existing && !queued) {
-    const recent = await recentOrder(db, session.id, now);
+    const recent = await recentOrder(db, session.account_id, now);
     if (recent) return orderCooldown(recent.retryAt);
   }
   const subtotal = items.reduce(
@@ -132,27 +131,24 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
   );
   const total = subtotal + catalog.deliveryFeeCents;
   await ensureInventory(db);
-  if (kind === "reservation") {
-    // Expired holds are released before the database-level one-active-checkout
-    // constraint is evaluated. This keeps a closed tab from blocking a new one.
-    await db.prepare(
-      "UPDATE checkout_queue SET status = 'expired' WHERE session_id = ? AND kind = 'reservation' AND status = 'held' AND expires_at <= ?",
-    ).bind(session.id, now).run();
-  }
+  // Expire abandoned reservations (including those never settled to held).
+  await db.prepare(
+    "UPDATE checkout_queue SET status = 'expired' WHERE account_id = ? AND kind = 'reservation' AND status IN ('pending', 'held') AND expires_at <= ?",
+  ).bind(session.account_id, now).run();
+  // Progress durable pending purchases left by a disconnected client.
+  await settleTicks(db, now);
   // sequence is assigned by the shared database; client timestamps and IDs
   // never decide priority. ready_at is the end of a server-assigned 100 ms tick.
   await db
     .prepare(
-      `INSERT OR IGNORE INTO checkout_queue (order_id, session_id, request_key, request_hash, items, subtotal, total, location, ready_at, kind, expires_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-      WHERE ? <> 'reservation' OR NOT EXISTS (
-        SELECT 1 FROM checkout_queue WHERE session_id = ? AND kind = 'reservation'
-          AND status IN ('pending', 'held') AND expires_at > ? AND request_key <> ?
-      )`,
+      `INSERT INTO checkout_queue (order_id, session_id, account_id, request_key, request_hash, items, subtotal, total, location, ready_at, kind, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT DO NOTHING`,
     )
     .bind(
       uuid(),
       session.id,
+      session.account_id,
       key,
       fingerprint,
       JSON.stringify(items),
@@ -162,14 +158,13 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
       (Math.floor(now / TICK_MS) + 1) * TICK_MS,
       kind,
       kind === "reservation" ? now + HOLD_MS : 0,
-      kind, session.id, now, key,
     )
     .run();
   const queuedResult = await db
-    .prepare("SELECT * FROM checkout_queue WHERE session_id = ? AND request_key = ?")
-    .bind(session.id, key)
+    .prepare("SELECT * FROM checkout_queue WHERE account_id = ? AND request_key = ?")
+    .bind(session.account_id, key)
     .first();
-  if (!queuedResult) return json({ code: "active_reservation", error: "You already have a checkout reservation. Finish or cancel it before starting another." }, 409);
+  if (!queuedResult) return json({ code: "active_reservation", error: "Your student account already has a pending checkout. Finish or cancel it before starting another, even in a different browser." }, 409);
   if (queuedResult.request_hash !== fingerprint || queuedResult.kind !== kind)
     return json(
       { error: "This checkout ID was already used for a different cart." },
@@ -180,14 +175,14 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
   if (queuedResult.status === "pending") {
     await new Promise((resolve) => setTimeout(resolve, Math.min(TICK_MS, Math.max(0, queuedResult.ready_at - Date.now()))));
   }
-  return checkoutResult(db, session.id, key, Date.now());
+  return checkoutResult(db, session.account_id, key, Date.now());
 }
 
-export async function checkoutResult(db, sessionId, key, now) {
+export async function checkoutResult(db, accountId, key, now) {
   // Check ownership before allowing this endpoint to process any queue work.
   let queued = await db.prepare(
-    "SELECT * FROM checkout_queue WHERE session_id = ? AND request_key = ?",
-  ).bind(sessionId, key).first();
+    "SELECT * FROM checkout_queue WHERE account_id = ? AND request_key = ?",
+  ).bind(accountId, key).first();
   if (!queued) return json({ error: "Checkout not found." }, 404);
   if (queued.status === "pending") {
     await settleTicks(db, now);
@@ -205,16 +200,18 @@ export async function checkoutResult(db, sessionId, key, now) {
   }
   if (queued.status === "cancelled") return json({ code: "cancelled", error: "Your checkout reservation was cancelled." }, 410);
   if (queued.status === "order_cooldown") {
-    const recent = await recentOrder(db, sessionId, now);
-    return orderCooldown(recent?.retryAt ?? now + ORDER_COOLDOWN_MS);
+    const account = await db.prepare("SELECT cooldown_until FROM accounts WHERE id = ?")
+      .bind(accountId).first();
+    // Retrying a rejected checkout must never invent or extend a deadline.
+    return orderCooldown(account?.cooldown_until ?? now);
   }
   if (queued.status !== "accepted") {
     return json({ code: queued.status, error: queued.status === "sold_out"
       ? "An item in your bag sold out before your turn. No demo funds were charged. Please update your bag."
       : "Not enough demo funds. Remove an item or reduce the quantity." }, 409);
   }
-  const order = await db.prepare("SELECT * FROM orders WHERE id = ? AND session_id = ?")
-    .bind(queued.order_id, sessionId).first();
+  const order = await db.prepare("SELECT * FROM orders WHERE id = ? AND account_id = ?")
+    .bind(queued.order_id, accountId).first();
   return json(publicOrder(order, now), 201);
 }
 
@@ -222,17 +219,17 @@ export async function reservationAction(request, db, session, key, action, now) 
   if (request.headers.get("x-csrf-token") !== session.csrf) {
     return json({ error: "Session validation failed. Reload and try again." }, 403);
   }
-  const queued = await db.prepare("SELECT * FROM checkout_queue WHERE session_id = ? AND request_key = ? AND kind = 'reservation'")
-    .bind(session.id, key).first();
+  const queued = await db.prepare("SELECT * FROM checkout_queue WHERE account_id = ? AND request_key = ? AND kind = 'reservation'")
+    .bind(session.account_id, key).first();
   if (!queued) return json({ error: "Checkout not found." }, 404);
   if (action === "cancel") {
     await db.prepare("UPDATE checkout_queue SET status = 'cancelled' WHERE sequence = ? AND status IN ('pending', 'held')")
       .bind(queued.sequence).run();
     // A racing confirmation must be returned as a purchase, never as cancelled.
     const result = await db.prepare("SELECT status FROM checkout_queue WHERE sequence = ?").bind(queued.sequence).first();
-    return result.status === "accepted" ? checkoutResult(db, session.id, key, now) : json({ status: "cancelled" });
+    return result.status === "accepted" ? checkoutResult(db, session.account_id, key, now) : json({ status: "cancelled" });
   }
   if (queued.status === "pending") await settleTicks(db, now);
-  await confirmHold(db, session.id, key, now);
-  return checkoutResult(db, session.id, key, now);
+  await confirmHold(db, session.account_id, key, now);
+  return checkoutResult(db, session.account_id, key, now);
 }

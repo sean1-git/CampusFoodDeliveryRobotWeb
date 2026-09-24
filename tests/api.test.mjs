@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { handleApi } from "../server/api.mjs";
 import { openDatabase } from "../server/local-db.mjs";
 import { ORDER_COOLDOWN_MS } from "../server/inventory.mjs";
+import { studentSession } from "./student-fixture.mjs";
 const origin = "https://campus.test";
 const basket = {
   items: [{ id: "sandwich", quantity: 1 }],
@@ -13,11 +14,7 @@ async function fixture(t) {
   t.after(() => DB.close());
   const env = { DB };
   async function user() {
-    const response = await handleApi(new Request(origin + "/api/session"), env);
-    return {
-      cookie: response.headers.get("set-cookie").split(";")[0],
-      ...(await response.json()),
-    };
+    return studentSession(DB);
   }
   function request(
     user,

@@ -5,8 +5,9 @@ import { readInventorySnapshot, inventoryNeedsRefresh, INVENTORY_REFRESH_MS,
   readReservation, reservationExpired } from "../src/lib/inventoryCache.ts";
 
 test("offline reload restores actual saved stock and its successful refresh timestamp", () => {
-  const snapshot = { catalog: { ...catalog, inventoryUpdatedAt: 1000,
-    products: catalog.products.map((p) => ({ ...p, stock: p.id === "sandwich" ? 1 : 20 })) }, fetchedAt: 1100 };
+  const snapshot = { catalog: { ...catalog, responseGeneratedAt: 1000,
+    products: catalog.products.map((p) => ({ ...p, stock: p.id === "sandwich" ? 1 : 20,
+      stockUpdatedAt: 500, syncedAt: 750 })) }, fetchedAt: 1100 };
   const disk = JSON.stringify(snapshot);
   assert.deepEqual(readInventorySnapshot({ getItem: () => disk }), snapshot);
   // Reading stale data offline must never change its timestamp to the current time.

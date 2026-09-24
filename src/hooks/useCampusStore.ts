@@ -5,6 +5,7 @@ import { requestJson } from "../lib/api";
 import { initialCart, load, save } from "../lib/storage";
 import { readReservation, reservationExpired, RESERVATION_KEY } from "../lib/inventoryCache";
 import { publishTabEvent, subscribeTabEvents } from "../lib/tabSync";
+import { createRefreshQueue } from "../lib/refreshQueue";
 import { useInventory } from "./useInventory";
 
 type CheckoutReply = Order | HeldCheckout | QueuedCheckout;
@@ -30,17 +31,17 @@ export function useCampusStore() {
   const [submitting, setSubmitting] = useState(false);
   const busy = useRef(false);
   const [booting, setBooting] = useState(true);
-  const [clock, setClock] = useState(Date.now());
+  const [clock, setClock] = useState(() => Date.now());
   const [lastApiSuccessAt, setLastApiSuccessAt] = useState<number | null>(() => {
     try { return Number(localStorage.getItem("campus-last-api-success")) || null; } catch { return null; }
   });
 
-  const writeHold = useCallback((next: Reservation | null) => {
+  const writeHold = useCallback((next: Reservation | null, broadcast = true) => {
     if (JSON.stringify(reservationRef.current) === JSON.stringify(next)) return;
     save(RESERVATION_KEY, next);
     reservationRef.current = next;
     setReservation(next);
-    publishTabEvent("checkout");
+    if (broadcast) publishTabEvent("checkout");
   }, []);
   const clearExpired = useCallback(() => {
     writeHold(null);
@@ -50,12 +51,36 @@ export function useCampusStore() {
     void refreshInventory(true).catch(() => {});
   }, [writeHold, refreshInventory]);
 
-  const refresh = useCallback(async () => {
-    const user = await requestJson<Session>("/api/session");
-    setSession(user);
-    const data = await requestJson<{ orders: Order[] }>("/api/orders");
-    setOrders(data.orders);
-  }, []);
+  const [refresh] = useState(() => {
+    let sessionToken: string | null = null;
+    return createRefreshQueue(async () => {
+      try {
+        const user = await requestJson<Session>("/api/session");
+        const replaced = sessionToken !== null && sessionToken !== user.csrf;
+        sessionToken = user.csrf;
+        setSession(user);
+        setClock(Date.now());
+        if (replaced) {
+          setOrders([]);
+          publishTabEvent("session");
+        }
+        const data = await requestJson<{ orders: Order[] }>("/api/orders");
+        setOrders(data.orders);
+      } catch (failure) {
+        const problem = failure as ApiError;
+        if (problem.status === 401) {
+          // An expired/revoked login must not leave another student's wallet
+          // or order history visible. Do not rebroadcast repeated 401 polls.
+          setSession(null);
+          setOrders([]);
+          setError(problem.message);
+          if (sessionToken !== null) publishTabEvent("session");
+          sessionToken = null;
+        }
+        throw failure;
+      }
+    });
+  });
   const finishOrder = useCallback((order: Order) => {
     writeHold(null);
     save("campus-pending", null);
@@ -65,15 +90,16 @@ export function useCampusStore() {
     setView("orders");
     setOrders((old) => [order, ...old.filter((o) => o.id !== order.id)]);
     setNotice("Demo order placed. No real money was charged and no robot was dispatched.");
+    publishTabEvent("orders");
     void refresh().catch(() => {});
     void refreshInventory(true).catch(() => {});
   }, [writeHold, refresh, refreshInventory]);
 
-  const acceptReply = useCallback((result: CheckoutReply, attempt: Reservation) => {
+  const acceptReply = useCallback((result: CheckoutReply, attempt: Reservation, broadcast = true) => {
     if (result.status === "pending") return;
     if (result.status === "held") {
       writeHold({ ...attempt, phase: attempt.phase === "confirming" || attempt.phase === "cancelling" ? attempt.phase : "held", expiresAt: result.expiresAt,
-        clockOffsetMs: result.serverNow - Date.now() });
+        clockOffsetMs: result.serverNow - Date.now() }, broadcast);
       setCart(Object.fromEntries(attempt.body.items.map((p) => [p.id, p.quantity])));
       setNotice("Your items are reserved for five minutes. Confirm before the timer ends.");
     } else finishOrder(result);
@@ -85,7 +111,7 @@ export function useCampusStore() {
     try {
       const result = await requestJson<CheckoutReply>(`/api/checkouts/${attempt.key}`);
       if (reservationRef.current?.key !== attempt.key || busy.current) return;
-      acceptReply(result, attempt);
+      acceptReply(result, attempt, false);
     } catch (failure) {
       const problem = failure as ApiError;
       if (reservationRef.current?.key !== attempt.key || busy.current) return;
@@ -120,28 +146,58 @@ export function useCampusStore() {
     };
   }, []);
 
-  useEffect(() => subscribeTabEvents((type) => {
-    if (type === "cart" || type === "checkout") {
+  const syncStoredState = useCallback(() => {
       const nextCart = initialCart();
+      // Remote hydration must not publish the same cart back to every tab.
+      cartSnapshot.current = JSON.stringify(nextCart);
       setCart((current) => JSON.stringify(current) === JSON.stringify(nextCart) ? current : nextCart);
-    }
-    if (type === "checkout") {
       const nextHold = restoreHold();
       if (JSON.stringify(reservationRef.current) !== JSON.stringify(nextHold)) {
         reservationRef.current = nextHold;
         setReservation(nextHold);
       }
-      void reconcileHold();
+      setPending(load("campus-pending", null));
+  }, []);
+
+  useEffect(() => subscribeTabEvents((type) => {
+    if (["cart", "checkout", "orders", "session"].includes(type)) syncStoredState();
+    if (!navigator.onLine) return;
+    if (type === "checkout") {
+      // The reserving broadcast precedes the POST; polling it now can return
+      // 404 and erase another tab's in-flight checkout.
+      if (reservationRef.current?.phase !== "reserving") void reconcileHold();
     }
-    if (type === "session" || type === "orders") void refresh().catch(() => {});
-  }), [reconcileHold, refresh]);
+    if (type === "session" || type === "orders") {
+      if (type === "orders") setNotice("An order was updated in another tab. Refreshing your wallet and order status.");
+      void refresh().catch(() => {});
+      void refreshInventory(true).catch(() => {});
+    }
+  }), [reconcileHold, refresh, refreshInventory, syncStoredState]);
+
+  useEffect(() => {
+    const wake = () => {
+      if (!navigator.onLine || document.visibilityState === "hidden") return;
+      syncStoredState();
+      void refresh().catch(() => {});
+      void reconcileHold();
+    };
+    window.addEventListener("focus", wake);
+    window.addEventListener("pageshow", wake);
+    document.addEventListener("visibilitychange", wake);
+    return () => {
+      window.removeEventListener("focus", wake);
+      window.removeEventListener("pageshow", wake);
+      document.removeEventListener("visibilitychange", wake);
+    };
+  }, [refresh, reconcileHold, syncStoredState]);
 
   useEffect(() => {
     if (!online) { setBooting(false); return; }
     let active = true;
     setBooting(true);
     void refresh().then(() => { if (active) { setError(""); void reconcileHold(); } })
-      .catch(() => { if (active) setError("The server is unavailable. Your saved inventory and bag remain available offline."); })
+      .catch((failure: ApiError) => { if (active) setError(failure.status === 401 ? failure.message
+        : "The server is unavailable. Your saved inventory and bag remain available offline."); })
       .finally(() => { if (active) setBooting(false); });
     return () => { active = false; };
   }, [online, refresh, reconcileHold]);
@@ -153,11 +209,11 @@ export function useCampusStore() {
     ? Math.max(0, session.nextOrderAt - clock)
     : 0;
   useEffect(() => {
-    if (!online || !csrf || (!activeOrders && !hasCheckout)) return;
+    if (!online || !csrf) return;
     const timer = setInterval(() => {
       void refresh().catch(() => {});
       void reconcileHold();
-    }, 5000);
+    }, activeOrders || hasCheckout ? 5000 : 30000);
     return () => clearInterval(timer);
   }, [online, csrf, activeOrders, hasCheckout, refresh, reconcileHold]);
 
@@ -210,6 +266,11 @@ export function useCampusStore() {
   }
   function failAction(failure: unknown) {
     const problem = failure as ApiError;
+    if (problem.status === 401) {
+      setSession(null);
+      setOrders([]);
+      void refresh().catch(() => {});
+    }
     if (problem.code === "expired") clearExpired();
     else if (problem.status && [400, 404, 409, 410].includes(problem.status)) {
       writeHold(null);
@@ -288,7 +349,8 @@ export function useCampusStore() {
     setOnline(true);
     setBooting(true);
     try { await refresh(); await refreshInventory(true); await reconcileHold(); setError(""); }
-    catch { setError("Still unable to reach the server. Saved inventory remains available."); }
+    catch (failure) { const problem = failure as ApiError;
+      setError(problem.status === 401 ? problem.message : "Still unable to reach the server. Saved inventory remains available."); }
     finally { setBooting(false); }
   }
 

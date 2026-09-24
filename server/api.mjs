@@ -1,16 +1,15 @@
 /**
- * Routes /api requests, creates demo cookie sessions, and returns catalog or order data.
- * Restricts order access to the current session and delegates checkout to orders.mjs.
+ * Routes /api requests and resolves server-side authenticated student sessions.
+ * Restricts orders to the student account and delegates demo checkout to orders.mjs.
  */
 import { json } from "./http.mjs";
 import { publicOrder, createDemoOrder, checkoutResult, reservationAction } from "./orders.mjs";
-import { ensureInventory, availableInventory, ORDER_COOLDOWN_MS } from "./inventory.mjs";
+import { ensureInventory, inventoryRecords } from "./inventory.mjs";
+import { authenticatedSession } from "./auth.mjs";
+import { canonicalOrigin } from "./origin.mjs";
 export { secureResponse } from "./http.mjs";
 import catalog from "../shared/catalog.json" with { type: "json" };
 
-const SESSION_AGE = 7 * 24 * 60 * 60 * 1000;
-const cookieName = "campus_demo_session";
-const uuid = () => crypto.randomUUID();
 const configuredOrigins = (env) =>
   String(env.ALLOWED_ORIGINS || env.ALLOWED_ORIGIN || "")
     .split(",")
@@ -38,7 +37,8 @@ export async function handleApi(request, env, now = Date.now()) {
       });
     // Checkout must originate from this site; orders.mjs also checks the CSRF token.
     if (request.method === "POST") {
-      const allowed = new Set([url.origin, ...configuredOrigins(env)]);
+      const allowed = new Set([canonicalOrigin(env.CANONICAL_ORIGIN, env.NODE_ENV === "production") || url.origin,
+        ...configuredOrigins(env)]);
       if (
         !allowed.has(request.headers.get("origin")) ||
         request.headers.get("sec-fetch-site") === "cross-site"
@@ -51,63 +51,36 @@ export async function handleApi(request, env, now = Date.now()) {
       return json({ error: "The demo store is temporarily unavailable." }, 503);
     if (url.pathname === "/api/catalog" && request.method === "GET") {
       await ensureInventory(db);
-      const stock = await availableInventory(db, now);
+      const inventory = await inventoryRecords(db, now);
       return json({ ...catalog, products: catalog.products.map((p) => ({
-        ...p, stock: stock.get(p.id) ?? 0,
-      })), mode: "demo", inventoryUpdatedAt: now });
+        ...p, ...(inventory.get(p.id) ?? { stock: 0, stockUpdatedAt: null, syncedAt: null }),
+      })), mode: "demo", responseGeneratedAt: now });
     }
-    const sessionId = request.headers
-      .get("cookie")
-      ?.split(";")
-      .map((x) => x.trim())
-      .find((x) => x.startsWith(cookieName + "="))
-      ?.slice(cookieName.length + 1);
-    let session = validId(sessionId)
-      ? await db
-          .prepare("SELECT * FROM sessions WHERE id = ? AND created_at > ?")
-          .bind(sessionId, now - SESSION_AGE)
-          .first()
-      : null;
+    const session = await authenticatedSession(request, db, now);
+    if (!session) return json({ code: "authentication_required",
+      error: "School sign-in is required to check out. School SSO is not connected yet; you can still browse the catalog." }, 401);
     if (url.pathname === "/api/session" && request.method === "GET") {
-      const headers = {};
-      if (!session) {
-        session = { id: uuid(), csrf: uuid(), created_at: now };
-        await db
-          .prepare(
-            "INSERT INTO sessions (id, csrf, created_at) VALUES (?, ?, ?)",
-          )
-          .bind(session.id, session.csrf, now)
-          .run();
-        headers["Set-Cookie"] =
-          `${cookieName}=${session.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800${url.protocol === "https:" ? "; Secure" : ""}`;
-      }
       const spent = await db
         .prepare(
-          "SELECT COALESCE(SUM(total), 0) AS spent FROM orders WHERE session_id = ?",
+          "SELECT COALESCE(SUM(total), 0) AS spent FROM orders WHERE account_id = ?",
         )
-        .bind(session.id)
+        .bind(session.account_id)
         .first();
-      const lastOrder = await db
-        .prepare("SELECT created_at FROM orders WHERE session_id = ? ORDER BY created_at DESC LIMIT 1")
-        .bind(session.id)
+      const account = await db
+        .prepare("SELECT cooldown_until FROM accounts WHERE id = ?")
+        .bind(session.account_id)
         .first();
       return json(
         {
           csrf: session.csrf,
+          accountId: session.account_id,
           balanceCents: catalog.initialBalanceCents - spent.spent,
-          nextOrderAt: lastOrder ? lastOrder.created_at + ORDER_COOLDOWN_MS : null,
+          nextOrderAt: account.cooldown_until || null,
           mode: "demo",
         },
         200,
-        headers,
       );
     }
-    // All order routes below require a valid demo session.
-    if (!session)
-      return json(
-        { error: "Your demo session expired. Reload to start a new session." },
-        401,
-      );
     if (url.pathname === "/api/reservations" && request.method === "POST") {
       return await createDemoOrder(request, db, session, now, "reservation");
     }
@@ -118,14 +91,14 @@ export async function handleApi(request, env, now = Date.now()) {
     if (url.pathname.startsWith("/api/checkouts/") && request.method === "GET") {
       const key = url.pathname.slice("/api/checkouts/".length);
       if (!validId(key)) return json({ error: "Checkout not found." }, 404);
-      return await checkoutResult(db, session.id, key, now);
+      return await checkoutResult(db, session.account_id, key, now);
     }
     if (url.pathname === "/api/orders" && request.method === "GET") {
       const result = await db
         .prepare(
-          "SELECT * FROM orders WHERE session_id = ? ORDER BY created_at DESC LIMIT 50",
+          "SELECT * FROM orders WHERE account_id = ? ORDER BY created_at DESC LIMIT 50",
         )
-        .bind(session.id)
+        .bind(session.account_id)
         .all();
       return json({
         orders: result.results.map((row) => publicOrder(row, now)),
@@ -134,8 +107,8 @@ export async function handleApi(request, env, now = Date.now()) {
     if (url.pathname.startsWith("/api/orders/") && request.method === "GET") {
       const id = url.pathname.slice("/api/orders/".length);
       const row = await db
-        .prepare("SELECT * FROM orders WHERE id = ? AND session_id = ?")
-        .bind(id, session.id)
+        .prepare("SELECT * FROM orders WHERE id = ? AND account_id = ?")
+        .bind(id, session.account_id)
         .first();
       return row
         ? json(publicOrder(row, now))

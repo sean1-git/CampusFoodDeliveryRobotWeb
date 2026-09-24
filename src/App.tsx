@@ -78,10 +78,11 @@ export default function App() {
         </div>
         <div className="message" role="status">
           <div>
-            {store.inventoryUpdatedAt
-              ? <>Saved inventory · last updated {new Date(store.inventoryUpdatedAt).toLocaleString()}.</>
-              : "Sample menu only · no saved inventory update yet."}
-            {" "}Inventory refreshes every 15 minutes while online. Checkout always checks current stock.
+            {store.inventoryFetchedAt
+              ? <>Catalog last fetched by this browser: {new Date(store.inventoryFetchedAt).toLocaleString()}.</>
+              : "Sample menu only · no saved catalog response yet."}
+            {" "}Catalog refreshes every 15 minutes while online. This is not the time stock last changed.
+            {" "}Source stock-change and sync times are shown per item. Checkout always checks current stock.
             {store.inventoryUnavailable && " The latest refresh failed; showing your last saved snapshot."}
             {store.lastApiSuccessAt && <div>Last successful server contact: {new Date(store.lastApiSuccessAt).toLocaleString()}.</div>}
           </div>

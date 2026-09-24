@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { openDatabase } from "../server/local-db.mjs";
 import { handleApi } from "../server/api.mjs";
 import { ensureInventory, availableInventory, HOLD_MS, ORDER_COOLDOWN_MS } from "../server/inventory.mjs";
+import { studentSession } from "./student-fixture.mjs";
 
 const origin = "https://campus.test";
 const body = { items: [{ id: "sandwich", quantity: 1 }], location: "Library entrance" };
@@ -13,8 +14,7 @@ async function fixture(t) {
   await DB.prepare("UPDATE inventory SET quantity = 1 WHERE product_id = 'sandwich'").run();
   const users = [];
   for (let i = 0; i < 2; i++) {
-    const response = await handleApi(new Request(origin + "/api/session"), { DB });
-    users.push({ cookie: response.headers.get("set-cookie").split(";")[0], ...(await response.json()) });
+    users.push(await studentSession(DB));
   }
   async function call(user, path, { method = "GET", payload, key = crypto.randomUUID(), now = Date.now(), csrf = user.csrf } = {}) {
     const response = await handleApi(new Request(origin + path, {
@@ -111,24 +111,28 @@ test("simultaneous tabs cannot create two active reservations for one session", 
   assert.equal((await f.DB.prepare("SELECT COUNT(*) AS count FROM checkout_queue WHERE session_id = ? AND status = 'held'").bind(f.users[0].cookie.split("=")[1]).first()).count, 1);
 });
 
-test("catalog reports the server inventory timestamp and excludes expired holds", async (t) => {
+test("catalog response time does not claim a source stock change when holds expire", async (t) => {
   const f = await fixture(t), hold = await f.reserve();
   const now = hold.body.expiresAt;
   const result = await f.call(f.users[0], "/api/catalog", { now });
-  assert.equal(result.body.inventoryUpdatedAt, now);
+  assert.equal(result.body.responseGeneratedAt, now);
+  assert.equal(result.body.inventoryUpdatedAt, undefined);
+  assert.equal(result.body.products.find((p) => p.id === "sandwich").stockUpdatedAt, null);
+  assert.equal(result.body.products.find((p) => p.id === "sandwich").syncedAt, null);
   assert.equal(result.body.products.find((p) => p.id === "sandwich").stock, 1);
 });
 
-test("if funds are spent elsewhere, confirmation rejects without charging and releases the hold", async (t) => {
+test("legacy direct-purchase endpoint cannot bypass an account's active reservation", async (t) => {
   const f = await fixture(t), hold = await f.reserve();
   const spent = await f.call(f.users[0], "/api/orders", {
     method: "POST", payload: { ...body, items: [{ id: "coffee", quantity: 12 }] },
   });
-  assert.equal(spent.status, 201);
+  assert.equal(spent.status, 409);
+  assert.equal(spent.body.code, "active_reservation");
   const confirmation = await f.call(f.users[0], `/api/reservations/${hold.key}/confirm`, { method: "POST" });
-  assert.equal(confirmation.body.code, "order_cooldown");
-  assert.equal((await availableInventory(f.DB)).get("sandwich"), 1);
-  assert.equal((await f.call(f.users[0], "/api/session")).body.balanceCents, 400);
+  assert.equal(confirmation.status, 201);
+  assert.equal((await availableInventory(f.DB)).get("sandwich"), 0);
+  assert.equal((await f.call(f.users[0], "/api/session")).body.balanceCents, 4250);
 });
 
 test("a completed order blocks another robot order for one hour", async (t) => {

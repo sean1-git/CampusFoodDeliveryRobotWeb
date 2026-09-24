@@ -50,7 +50,6 @@ export function useInventory(online: boolean) {
 
   return {
     catalog: snapshot?.catalog ?? sampleCatalog as Catalog,
-    inventoryUpdatedAt: snapshot?.catalog.inventoryUpdatedAt ?? snapshot?.fetchedAt ?? null,
     inventoryFetchedAt: snapshot?.fetchedAt ?? null,
     inventoryUnavailable: unavailable,
     refreshInventory,

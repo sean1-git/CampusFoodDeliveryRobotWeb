@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { openDatabase } from "../server/local-db.mjs";
 import { handleApi } from "../server/api.mjs";
 import { ensureInventory, availableInventory, settleTicks } from "../server/inventory.mjs";
+import { studentSession } from "./student-fixture.mjs";
 
 const origin = "https://campus.test";
 async function fixture(t, file) {
@@ -15,9 +16,7 @@ async function fixture(t, file) {
   await DB.prepare("UPDATE inventory SET quantity = 1 WHERE product_id = 'sandwich'").run();
   const users = [];
   for (let i = 0; i < 12; i++) {
-    const response = await handleApi(new Request(origin + "/api/session"), { DB });
-    const cookie = response.headers.get("set-cookie").split(";")[0];
-    users.push({ cookie, id: cookie.split("=")[1], ...(await response.json()) });
+    users.push(await studentSession(DB));
   }
   const call = (user, path, options = {}) => handleApi(new Request(origin + path, {
     ...options, headers: { cookie: user.cookie, origin, "content-type": "application/json",
@@ -37,9 +36,9 @@ async function fixture(t, file) {
   async function enqueue(user, readyAt, { total = 750, quantity = 1 } = {}) {
     const key = crypto.randomUUID();
     await DB.prepare(`INSERT INTO checkout_queue
-      (session_id, request_key, request_hash, order_id, items, subtotal, total, location, ready_at)
-      VALUES (?, ?, 'test', ?, ?, ?, ?, 'Library entrance', ?)`)
-      .bind(user.id, key, crypto.randomUUID(), JSON.stringify([{ id: "sandwich", name: "Sandwich", priceCents: 650, quantity }]),
+      (session_id, account_id, request_key, request_hash, order_id, items, subtotal, total, location, ready_at)
+      VALUES (?, ?, ?, 'test', ?, ?, ?, ?, 'Library entrance', ?)`)
+      .bind(user.id, user.account_id, key, crypto.randomUUID(), JSON.stringify([{ id: "sandwich", name: "Sandwich", priceCents: 650, quantity }]),
         total - 100, total, readyAt).run();
     return key;
   }

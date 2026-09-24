@@ -1,4 +1,5 @@
 import type { Catalog, Reservation } from "../types";
+import { inventoryTimestamp } from "./inventoryFreshness.ts";
 
 export const INVENTORY_REFRESH_MS = 15 * 60 * 1000;
 export const INVENTORY_CACHE_KEY = "campus-inventory-v1";
@@ -17,6 +18,13 @@ export function readInventorySnapshot(storage: Reader): InventorySnapshot | null
     if (!menu.products.every((p: Record<string, unknown>) => p
       && ["id", "name", "description", "category", "emoji", "color", "tag"].every((k) => typeof p[k] === "string")
       && Number.isInteger(p.priceCents) && Number.isInteger(p.stock) && (p.stock as number) >= 0)) return null;
+    // v1 caches used response generation as inventoryUpdatedAt. Preserve stock,
+    // but never promote that timestamp (or fetchedAt) to source freshness.
+    delete menu.inventoryUpdatedAt;
+    menu.responseGeneratedAt = inventoryTimestamp(menu.responseGeneratedAt);
+    menu.products = menu.products.map((p: Record<string, unknown>) => ({ ...p,
+      stockUpdatedAt: inventoryTimestamp(p.stockUpdatedAt), syncedAt: inventoryTimestamp(p.syncedAt),
+    }));
     return value;
   } catch { return null; }
 }

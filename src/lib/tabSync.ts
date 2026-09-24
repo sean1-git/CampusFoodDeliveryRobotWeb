@@ -12,13 +12,13 @@ let channel: BroadcastChannel | null = null;
 
 function getChannel() {
   if (channel || typeof BroadcastChannel === "undefined") return channel;
-  channel = new BroadcastChannel(CHANNEL_NAME);
+  try { channel = new BroadcastChannel(CHANNEL_NAME); } catch { /* Use storage fallback. */ }
   return channel;
 }
 
 export function publishTabEvent(type: TabEvent) {
-  const message = { type, sender, at: Date.now() };
-  getChannel()?.postMessage(message);
+  const message = { type, sender, id: crypto.randomUUID() };
+  try { getChannel()?.postMessage(message); } catch { /* Use storage fallback. */ }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(message));
   } catch {
@@ -27,9 +27,16 @@ export function publishTabEvent(type: TabEvent) {
 }
 
 export function subscribeTabEvents(listener: (type: TabEvent) => void) {
-  const onMessage = (event: MessageEvent<{ type?: TabEvent; sender?: string }>) => {
-    if (event.data?.sender === sender || !event.data?.type) return;
-    listener(event.data.type);
+  const seen = new Set<string>();
+  const onMessage = (event: MessageEvent) => {
+    const message = event.data;
+    if (!message || message.sender === sender || typeof message.sender !== "string"
+      || typeof message.id !== "string"
+      || !["cart", "checkout", "session", "orders"].includes(message.type)
+      || seen.has(message.id)) return;
+    seen.add(message.id);
+    if (seen.size > 256) seen.delete(seen.values().next().value!);
+    listener(message.type);
   };
   const current = getChannel();
   current?.addEventListener("message", onMessage);

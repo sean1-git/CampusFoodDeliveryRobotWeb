@@ -3,6 +3,7 @@
  * Add buttons call the store hook to update bag quantities.
  */
 import { money } from "../lib/money";
+import { inventoryFreshnessLabel } from "../lib/inventoryFreshness";
 import type { CampusStore } from "../hooks/useCampusStore";
 
 type Props = Pick<
@@ -84,6 +85,7 @@ export function Storefront({
                 <h3>{p.name}</h3>
                 <p>{p.description}</p>
                 <p>{p.stock === undefined ? "Connect to check stock" : p.stock === 0 ? "Sold out" : `${p.stock} left in demo stock`}</p>
+                <p>{inventoryFreshnessLabel(p)}</p>
                 <div className="product-bottom">
                   <strong>{money(p.priceCents)}</strong>
                   <button
