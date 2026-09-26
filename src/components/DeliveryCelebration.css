@@ -1,0 +1,14 @@
+.delivery-celebration { position: fixed; inset: 0; z-index: 1000; pointer-events: none; }
+.delivery-confetti { position: absolute; inset: 0; overflow: hidden; }
+.delivery-confetti i { position: absolute; top: -24px; left: var(--x); width: 9px; height: 15px; border-radius: 2px; background: var(--color); opacity: 0; animation: delivery-confetti-fall var(--duration) var(--delay) ease-in forwards; }
+.delivery-confetti i:nth-child(3n) { border-radius: 50%; width: 10px; height: 10px; }
+@keyframes delivery-confetti-fall {
+  0% { opacity: 1; transform: translate3d(0, -20px, 0) rotate(0deg); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(var(--drift), 105vh, 0) rotate(var(--rotation)); }
+}
+.delivery-celebration-toast { pointer-events: auto; position: absolute; top: 24px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px); display: flex; gap: 14px; align-items: center; padding: 18px 20px; border: 1px solid #c5e3d5; border-radius: 24px; background: #f0fcf5; color: #164833; box-shadow: 0 12px 42px #16483326; }
+.delivery-celebration-toast > span { font-size: 1.8rem; }
+.delivery-celebration-toast p { margin: 5px 0 0; font-size: .8rem; line-height: 1.4; }
+.delivery-celebration-toast button { background: transparent; color: inherit; border: 0; border-radius: 50%; min-width: 44px; min-height: 44px; font-size: 1.4rem; }
+@media (prefers-reduced-motion: reduce) { .delivery-confetti { display: none; }.delivery-confetti i { animation: none; } }

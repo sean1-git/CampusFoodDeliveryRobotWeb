@@ -12,6 +12,7 @@ import { DeliveryLocation } from "./components/DeliveryMap";
 import { Bag } from "./components/BagIcon";
 import { money } from "./lib/money";
 import { DeliveryStatus } from "./components/DeliveryStatus";
+import { DeliveryCelebration } from "./components/DeliveryCelebration";
 import "./App.css";
 import "./MaterialEnhancements.css";
 
@@ -23,6 +24,7 @@ export default function App() {
   const { installHelp, setInstallHelp, update } = pwa;
   return (
     <>
+      <DeliveryCelebration orders={store.orders} />
       <div className="demo-strip">
         <span>DEMO EXPERIENCE</span> Sample menu, simulated funds & robot
         delivery. No login or real purchases. Each browser gets a demo wallet.
