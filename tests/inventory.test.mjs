@@ -25,7 +25,7 @@ async function fixture(t, file) {
   async function purchase(user, key = crypto.randomUUID(), items = [{ id: "sandwich", quantity: 1 }]) {
     let response = await call(user, "/api/orders", { method: "POST",
       headers: { "idempotency-key": key },
-      body: JSON.stringify({ items, location: "Library Walk", destination: { lat: 37.366402, lng: -120.423777, confirmed: true } }),
+      body: JSON.stringify({ items, location: "Library Walk", destination: { lat: 37.364864, lng: -120.425233, confirmed: true } }),
     });
     for (let i = 0; response.status === 202 && i < 10; i++) {
       await new Promise((resolve) => setTimeout(resolve, 100));

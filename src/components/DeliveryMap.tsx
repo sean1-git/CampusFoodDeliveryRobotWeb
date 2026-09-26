@@ -47,13 +47,20 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
     const listeners: google.maps.MapsEventListener[] = [];
     void loadMaps().then(() => {
       if (!active || !element.current) return;
-      const map = new google.maps.Map(element.current, { center: { lat: 37.3647, lng: -120.4254 }, zoom: 17,
+      const map = new google.maps.Map(element.current, { center: { lat: 37.3635, lng: -120.4260 }, zoom: 17,
         mapId: "DEMO_MAP_ID", mapTypeControl: false, streetViewControl: false, clickableIcons: false,
         restriction: { latLngBounds: { north: 37.370, south: 37.358, east: -120.418, west: -120.433 }, strictBounds: true } });
       mapRef.current = map;
+      const bounds = new google.maps.LatLngBounds();
+      campusStops.forEach(stop => bounds.extend(stop));
+      map.fitBounds(bounds, 40);
       geoEdges.forEach(([a, b]) => new google.maps.Polyline({ map, path: [campusStops[a], campusStops[b]],
         strokeColor: "#19817b", strokeOpacity: 0.45, strokeWeight: 12, clickable: false }));
       campusStops.forEach(stop => new google.maps.marker.AdvancedMarkerElement({ map, position: stop, title: `${stop.label} · demo anchor` }));
+      pickupStores.forEach(store => {
+        const tag = document.createElement("span"); tag.className = "map-store-marker"; tag.textContent = store.name;
+        new google.maps.marker.AdvancedMarkerElement({ map, position: campusStops[store.node], content: tag, title: `${store.name} · simulated pickup` });
+      });
       const marker = new google.maps.marker.AdvancedMarkerElement({ map, title: "Your exact delivery pin", gmpDraggable: !!handlers.current.onPick });
       markerRef.current = marker;
       const content = document.createElement("span"); content.textContent = "🤖"; content.style.fontSize = "30px";
@@ -108,14 +115,14 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
   return <section className="campus-delivery">
     <p className="eyebrow">UC MERCED · DELIVERY LOCATION</p>
     <h1>Where should we meet you?</h1>
-    <p>Place an exact pin on a highlighted demo path. Your order cannot be processed until you confirm a supported location.</p>
+    <p>Tap anywhere along the highlighted Scholars Lane walkway loop, or drag your pin along it. The enclosed interior is not a delivery area. Confirm your meeting point before checkout.</p>
     <p>Would you like to share your location? This is optional. We read it once to help place your pin; only your confirmed meeting point is saved with checkout.</p>
     <button className="back" disabled={!online || locked || locating || !ready} onClick={locate}>{locating ? "Finding your location…" : "Use my location"}</button>
     <GoogleDeliveryMap pin={pin} route={route} onPick={locked ? undefined : pick} onReady={setReady} />
     <div className="map-points">
       {campusStops.map(stop => <button className="back" key={stop.id} disabled={locked || !ready || !online} onClick={() => pick(stop)}>{stop.label}</button>)}
     </div>
-    <p className="map-notice">Simulation paths connect the three supplied coordinates. Pickup markers use nearby demo anchors, not surveyed store entrances. Sidewalk geometry must be verified before physical robot delivery.</p>
+    <p className="map-notice">The loop follows your four coordinates and returns to the existing Scholars Lane anchor. Pins are accepted within 8 m of the line. Store markers are simulated pickup points, not verified entrances.</p>
     {pin && <p>Pin: {pin.lat.toFixed(6)}, {pin.lng.toFixed(6)} · {valid ? "Within the demo delivery paths" : "Outside the supported paths — choose another point"}</p>}
     {route && <p>Pickup: {route.pickups?.map(p => p.name).join(" → ")} → your pin. About {Math.max(1, Math.ceil((route.seconds + 20) / 60))} minutes including preparation · {route.meters} m simulated travel.</p>}
     {message && <p role="status">{message}</p>}

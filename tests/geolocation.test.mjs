@@ -1,11 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { campusStops, confirmedRoute, routeToPin, pickupRoute, geoPosition, geoTimeline } from "../shared/campusGeo.ts";
+import { campusStops, geoEdges, distance, confirmedRoute, routeToPin, pickupRoute, geoPosition, geoTimeline } from "../shared/campusGeo.ts";
 import { openDatabase } from "../server/local-db.mjs";
 import { handleApi } from "../server/api.mjs";
 import { studentSession } from "./student-fixture.mjs";
 
-const destination = { lat: 37.363146, lng: -120.425201, confirmed: true };
+const destination = { lat: 37.362167, lng: -120.426683, confirmed: true };
+test("every walkway segment accepts arbitrary pins, while the enclosed interior is rejected", () => {
+  for (const [a, b] of geoEdges) {
+    for (const fraction of [0, 0.17, 0.5, 0.83, 1]) {
+      const pin = { lat: campusStops[a].lat + fraction * (campusStops[b].lat - campusStops[a].lat),
+        lng: campusStops[a].lng + fraction * (campusStops[b].lng - campusStops[a].lng), confirmed: true };
+      const route = confirmedRoute(pin);
+      assert.ok(route, `Rejected a pin on edge ${a}-${b}`);
+      assert.deepEqual(route.destination, pin);
+      assert.equal(route.version, "ucm-simulation-v2");
+    }
+  }
+  assert.equal(routeToPin({ lat: 37.3638186, lng: -120.4259624 }), null);
+  assert.equal(routeToPin({ lat: 37.366402, lng: -120.423777 }), null);
+  // Dijkstra can use the closing edge rather than walking the long way around.
+  assert.equal(routeToPin(campusStops[4]).seconds, Math.ceil(distance(campusStops[0], campusStops[4])));
+});
 test("geofence rejects missing, unconfirmed, malformed, outside-campus and off-path pins", () => {
   for (const p of [null, {}, { ...destination, confirmed: false }, { lat: NaN, lng: 0, confirmed: true },
     { ...destination, lat: '37.363146' }, { lat: 37.7749, lng: -122.4194, confirmed: true },
@@ -18,11 +34,11 @@ test("geofence rejects missing, unconfirmed, malformed, outside-campus and off-p
 test("product store IDs determine pickups; mixed-store route chooses shortest sequence", () => {
   const single = pickupRoute(destination, ["library", "library"]);
   assert.deepEqual(single.pickups.map(p => p.id), ["library"]);
-  assert.deepEqual(single.points[0], { lat: campusStops[2].lat, lng: campusStops[2].lng });
+  assert.deepEqual(single.points[0], { lat: campusStops[3].lat, lng: campusStops[3].lng });
   const mixed = pickupRoute(destination, ["library", "summits"]);
   assert.deepEqual(new Set(mixed.pickups.map(p => p.id)), new Set(["library", "summits"]));
-  const forward = routeToPin(campusStops[2], 0).seconds + routeToPin(destination, 2).seconds;
-  const reverse = routeToPin(campusStops[0], 2).seconds + routeToPin(destination, 0).seconds;
+  const forward = routeToPin(campusStops[3], 0).seconds + routeToPin(destination, 3).seconds;
+  const reverse = routeToPin(campusStops[0], 3).seconds + routeToPin(destination, 0).seconds;
   assert.equal(mixed.seconds, Math.min(forward, reverse));
   assert.ok(mixed.meters > single.meters);
   assert.deepEqual(geoPosition(mixed, mixed.seconds + 1), destination);

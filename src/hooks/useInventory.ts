@@ -13,7 +13,8 @@ export function useInventory(online: boolean) {
   const latest = useRef(snapshot);
   const inFlight = useRef<Promise<void> | null>(null);
   const refreshInventory = useCallback((force = false): Promise<void> => {
-    if (!navigator.onLine || (!force && !inventoryNeedsRefresh(latest.current?.fetchedAt ?? null, Date.now()))) return Promise.resolve();
+    const versionChanged = latest.current?.catalog.revision !== sampleCatalog.revision;
+    if (!navigator.onLine || (!force && !versionChanged && !inventoryNeedsRefresh(latest.current?.fetchedAt ?? null, Date.now()))) return Promise.resolve();
     if (inFlight.current) return inFlight.current;
     const task = (async () => {
       try {

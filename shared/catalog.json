@@ -72,6 +72,74 @@
       "color": "#f3e3d1",
       "tag": "A little treat",
       "storeId": "summits"
+    },
+    {
+      "id": "summits-wrap",
+      "name": "Chipotle veggie wrap",
+      "description": "Roasted vegetables, rice & a smoky chipotle spread.",
+      "category": "Lunch",
+      "priceCents": 625,
+      "emoji": "🌯",
+      "color": "#f6e7d2",
+      "tag": "Demo lunch",
+      "storeId": "summits"
+    },
+    {
+      "id": "summits-trail-mix",
+      "name": "Summit trail mix",
+      "description": "Crunchy nuts, dried cranberries & chocolate bites.",
+      "category": "Snacks",
+      "priceCents": 225,
+      "emoji": "🥜",
+      "color": "#ede3cf",
+      "tag": "Pocket fuel",
+      "storeId": "summits"
+    },
+    {
+      "id": "summits-iced-tea",
+      "name": "Peach iced tea",
+      "description": "A chilled peach tea for the walk between classes.",
+      "category": "Drinks",
+      "priceCents": 275,
+      "emoji": "🧋",
+      "color": "#f9dfce",
+      "tag": "Campus cooler",
+      "storeId": "summits"
+    },
+    {
+      "id": "bobcat-bagel",
+      "name": "Bobcat breakfast bagel",
+      "description": "A toasted bagel with egg, cheese & tomato.",
+      "category": "Lunch",
+      "priceCents": 525,
+      "emoji": "🥯",
+      "color": "#f6e4ce",
+      "tag": "Study starter",
+      "storeId": "library"
+    },
+    {
+      "id": "bobcat-matcha",
+      "name": "Iced oat matcha",
+      "description": "Smooth matcha with oat milk, poured over ice.",
+      "category": "Drinks",
+      "priceCents": 425,
+      "emoji": "🍵",
+      "color": "#e3efd8",
+      "tag": "Library favorite",
+      "storeId": "library"
+    },
+    {
+      "id": "bobcat-brownie",
+      "name": "Midnight fudge brownie",
+      "description": "A rich chocolate square for your next study break.",
+      "category": "Snacks",
+      "priceCents": 250,
+      "emoji": "🍫",
+      "color": "#ead9d6",
+      "tag": "Sweet break",
+      "storeId": "library"
     }
-  ]
+  ],
+  "revision": 2,
+  "inventorySource": "simulated"
 }

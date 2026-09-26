@@ -23,6 +23,7 @@ export function useCampusStore() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [view, setView] = useState<"shop" | "orders" | "map">("shop");
   const [filter, setFilter] = useState("All items");
+  const [storeId, setStoreId] = useState("summits");
   const [location, setLocation] = useState(sampleCatalog.locations[0]);
   const [destination, setDestination] = useState<DeliveryPin | null>(null);
   const [reservation, setReservation] = useState<Reservation | null>(restoreHold);
@@ -360,7 +361,7 @@ export function useCampusStore() {
     finally { setBooting(false); }
   }
 
-  return { ...inventory, session, cart, orders, view, setView, filter, setFilter, location, setLocation, destination, setDestination,
+  return { ...inventory, session, cart, orders, view, setView, filter, setFilter, storeId, setStoreId, location, setLocation, destination, setDestination,
     checkout, online, error, notice, submitting, pending, reservation, secondsLeft, lastApiSuccessAt,
     orderCooldownMs, nextOrderAt: session?.nextOrderAt ?? null,
     booting, lines, quantity, subtotal, total, locked, activeOrders, change, beginCheckout, placeOrder,

@@ -70,7 +70,7 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
     !body ||
     !Array.isArray(body.items) ||
     body.items.length < 1 ||
-    body.items.length > 6
+    body.items.length > catalog.products.length
   ) {
     return json(
       { error: "Choose products and a supported delivery location." },

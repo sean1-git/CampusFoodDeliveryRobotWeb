@@ -7,7 +7,7 @@ import { studentSession } from "./student-fixture.mjs";
 const origin = "https://campus.test";
 const basket = {
   items: [{ id: "sandwich", quantity: 1 }],
-  location: "Library Walk", destination: { lat: 37.366402, lng: -120.423777, confirmed: true },
+  location: "Library Walk", destination: { lat: 37.364864, lng: -120.425233, confirmed: true },
 };
 async function fixture(t) {
   const DB = openDatabase();
@@ -187,7 +187,7 @@ test("delivery status follows the simulated clock without another dispatch", asy
   const f = await fixture(t),
     u = await f.user();
   const order = await (
-    await f.request(u, "/api/orders", "POST", { ...basket, destination: { lat: 37.363146, lng: -120.425201, confirmed: true } })
+    await f.request(u, "/api/orders", "POST", { ...basket, destination: { lat: 37.362167, lng: -120.426683, confirmed: true } })
   ).json();
   const request = () =>
     new Request(origin + "/api/orders/" + order.id, {

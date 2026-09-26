@@ -70,3 +70,13 @@ md-linear-progress { display: block; width: 100%; --md-linear-progress-track-hei
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
   .product:hover { transform: none; }
 }
+.store-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 26px 0; }
+.store-tabs button { display: flex; align-items: center; text-align: left; gap: 12px; padding: 18px; border-radius: 20px; border: 1px solid #d7dfea; background: #fff; color: #44506a; font-weight: 700; }
+.store-tabs button[aria-selected="true"] { background: #e4ebff; border-color: #3559c7; color: #1d367d; box-shadow: 0 4px 14px #3559c714; }
+.store-tabs small { display: block; font-size: .72rem; margin-top: 6px; font-weight: 400; }
+.store-tab-icon { font-size: 1.65rem; }
+.store-description, .store-inventory-note { color: #5b6577; font-size: .83rem; line-height: 1.6; margin: 8px 0 16px; }
+.demo-inventory-badge { padding: 7px 10px; background: #fff0d6; color: #76541d; border-radius: 10px; white-space: nowrap; font-size: .7rem; }
+.bag-pickup-store { display: block; font-size: .66rem; color: #5b6577; margin: 5px 0; }
+.map-store-marker { display: block; background: #234d42; color: white; border: 2px solid white; border-radius: 9px; padding: 7px 9px; font: 600 11px Arial, sans-serif; box-shadow: 0 2px 6px #0003; }
+@media (max-width: 540px) { .store-tabs { gap: 8px; }.store-tabs button { padding: 12px; gap: 7px; font-size: .8rem; }.store-tab-icon { font-size: 1.1rem; }.storefront .section-heading { flex-wrap: wrap; gap: 6px; } }

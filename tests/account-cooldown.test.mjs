@@ -11,7 +11,7 @@ import { availableInventory } from "../server/inventory.mjs";
 import { studentSession } from "./student-fixture.mjs";
 
 const origin = "https://campus.test";
-const basket = { items: [{ id: "sandwich", quantity: 1 }], location: "Library Walk", destination: { lat: 37.366402, lng: -120.423777, confirmed: true } };
+const basket = { items: [{ id: "sandwich", quantity: 1 }], location: "Library Walk", destination: { lat: 37.364864, lng: -120.425233, confirmed: true } };
 async function call(DB, user, path, { method = "GET", body, key = crypto.randomUUID(), now = Date.now(), headers = {} } = {}) {
   const response = await handleApi(new Request(origin + path, {
     method, headers: { origin, cookie: user?.cookie ?? "", "x-csrf-token": user?.csrf ?? "",

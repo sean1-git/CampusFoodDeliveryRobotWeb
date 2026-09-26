@@ -6,6 +6,7 @@ import { money } from "../lib/money";
 import { formatOrderCooldown } from "../lib/orderCooldown";
 import type { CampusStore } from "../hooks/useCampusStore";
 import { Bag } from "./BagIcon";
+import { storeName } from "../../shared/stores";
 
 type Props = Pick<
   CampusStore,
@@ -96,6 +97,7 @@ export function ShoppingBag({
                 </span>
                 <div>
                   <strong>{p.name}</strong>
+                  <small className="bag-pickup-store">{storeName(p.storeId)}</small>
                   <div className="quantity">
                     <button
                       disabled={locked}

@@ -5,10 +5,11 @@
 import { money } from "../lib/money";
 import { inventoryFreshnessLabel } from "../lib/inventoryFreshness";
 import type { CampusStore } from "../hooks/useCampusStore";
+import { stores, storeName } from "../../shared/stores";
 
 type Props = Pick<
   CampusStore,
-  "catalog" | "filter" | "setFilter" | "cart" | "locked" | "change"
+  "catalog" | "filter" | "setFilter" | "cart" | "locked" | "change" | "storeId" | "setStoreId"
 >;
 export function Storefront({
   catalog,
@@ -17,7 +18,12 @@ export function Storefront({
   cart,
   locked,
   change,
+  storeId,
+  setStoreId,
 }: Props) {
+  const selectedStore = stores.find(store => store.id === storeId)!;
+  const storeProducts = catalog.products.filter(product => product.storeId === storeId);
+  function selectStore(id: string) { setStoreId(id); setFilter("All items"); }
   return (
     <section className="storefront">
       <div className="intro">
@@ -52,10 +58,25 @@ export function Storefront({
           </span>
         </div>
       </div>
-      <div className="section-heading">
-        <h2>What sounds good?</h2>
-        <span>{catalog.products.length} sample favorites</span>
+      <div className="store-tabs" role="tablist" aria-label="Campus stores">
+        {stores.map((store, index) => <button key={store.id} role="tab" id={`store-tab-${store.id}`}
+          aria-selected={storeId === store.id} aria-controls="store-inventory" tabIndex={storeId === store.id ? 0 : -1}
+          onClick={() => selectStore(store.id)} onKeyDown={event => {
+            const next = event.key === "Home" ? 0 : event.key === "End" ? stores.length - 1
+              : event.key === "ArrowRight" ? (index + 1) % stores.length : event.key === "ArrowLeft" ? (index + stores.length - 1) % stores.length : -1;
+            if (next < 0) return; event.preventDefault(); selectStore(stores[next].id);
+            document.getElementById(`store-tab-${stores[next].id}`)?.focus();
+          }}>
+          <span className="store-tab-icon" aria-hidden="true">{store.icon}</span>
+          <span>{store.name}<small>{catalog.products.filter(p => p.storeId === store.id).length} simulated items</small></span>
+        </button>)}
       </div>
+      <div id="store-inventory" role="tabpanel" aria-labelledby={`store-tab-${storeId}`}>
+      <div className="section-heading">
+        <div><h2>{selectedStore.name}</h2><p className="store-description">{selectedStore.description}</p></div>
+        <span className="demo-inventory-badge">Simulated inventory</span>
+      </div>
+      <p className="store-inventory-note">Sample food and prices for testing. The school inventory API is not connected yet. You can mix items from both stores in one bag.</p>
       <div className="filters" aria-label="Product categories">
         {["All items", "Lunch", "Drinks", "Snacks"].map((label) => (
           <md-filter-chip
@@ -70,7 +91,7 @@ export function Storefront({
         ))}
       </div>
       <div className="products">
-        {catalog.products
+        {storeProducts
           .filter((p) => filter === "All items" || p.category === filter)
           .map((p) => (
             <article className="product" key={p.id}>
@@ -85,7 +106,7 @@ export function Storefront({
                 <div className="product-category">{p.category}</div>
                 <h3>{p.name}</h3>
                 <p>{p.description}</p>
-                <p className="pickup-chip">Demo pickup: {p.storeId === "library" ? "Kolligian Library store" : "The Summits Marketplace"}</p>
+                <p className="pickup-chip">Pickup: {storeName(p.storeId)}</p>
                 <p>{p.stock === undefined ? "Connect to check stock" : p.stock === 0 ? "Sold out" : `${p.stock} left in demo stock`}</p>
                 <p>{inventoryFreshnessLabel(p)}</p>
                 <div className="product-bottom">
@@ -102,6 +123,7 @@ export function Storefront({
               </div>
             </article>
           ))}
+      </div>
       </div>
       <p className="menu-note">
         A sample menu for exploring the experience. Product details and

@@ -1,20 +1,23 @@
-// Simulation only: links between the user's three supplied campus coordinates.
+// Simulation only: the user's ordered Scholars Lane walkway loop.
 // Replace this versioned network with surveyed sidewalk geometry before real dispatch.
+import { storeName } from "./stores.ts";
 export type Coordinate = { lat: number; lng: number };
 export type DeliveryPin = Coordinate & { confirmed: true };
 export type GeoRoute = { version: string; destination: DeliveryPin; label: string; points: Coordinate[]; meters: number; seconds: number; pickups?: { id: string; name: string }[] };
 export const campusStops = [
   { id: "scholars", label: "Scholars Lane", lat: 37.363452, lng: -120.427793 },
-  { id: "campus", label: "Campus Walk", lat: 37.363146, lng: -120.425201 },
-  { id: "library", label: "Library Walk", lat: 37.366402, lng: -120.423777 },
+  { id: "south", label: "Loop point A · South", lat: 37.362167, lng: -120.426683 },
+  { id: "east", label: "Loop point B · East", lat: 37.363970, lng: -120.424219 },
+  { id: "north", label: "Loop point C · North", lat: 37.364864, lng: -120.425233 },
+  { id: "west", label: "Loop point D · West", lat: 37.364640, lng: -120.425884 },
 ];
-export const geoEdges = [[0, 1], [1, 2]] as const;
+export const geoEdges = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 0]] as const;
 export const GEO_PREPARATION_MS = 20000;
 export const CORRIDOR_METERS = 8;
 export const ROBOT_METERS_PER_SECOND = 1;
 export const pickupStores = [
-  { id: "library", name: "Kolligian Library store", node: 2 },
-  { id: "summits", name: "The Summits Marketplace", node: 0 },
+  { id: "library", name: storeName("library"), node: 3 },
+  { id: "summits", name: storeName("summits"), node: 0 },
 ];
 export function distance(a: Coordinate, b: Coordinate): number {
   const rad = Math.PI / 180;
@@ -37,22 +40,24 @@ function project(p: Coordinate, a: Coordinate, b: Coordinate) {
 export function routeToPin(value: unknown, start = 0): GeoRoute | null {
   if (!coordinate(value)) return null;
   // Conservative service envelope, not a claim to represent the legal campus boundary.
-  if (value.lat < 37.3630 || value.lat > 37.3665 || value.lng < -120.4279 || value.lng > -120.42365) return null;
+  if (value.lat < 37.3620 || value.lat > 37.3650 || value.lng < -120.4280 || value.lng > -120.4240) return null;
   const nearest = geoEdges.map(([a, b]) => {
     const point = project(value, campusStops[a], campusStops[b]);
     return { a, b, point, offset: distance(value, point) };
   }).sort((a, b) => a.offset - b.offset)[0];
   if (nearest.offset > CORRIDOR_METERS) return null;
   const nodes: Coordinate[] = [...campusStops, nearest.point, { lat: value.lat, lng: value.lng }];
+  const junction = campusStops.length, destination = junction + 1;
+  if (!Number.isInteger(start) || start < 0 || start >= campusStops.length) return null;
   const edges: [number, number][] = geoEdges.filter(([a, b]) => a !== nearest.a || b !== nearest.b).map(([a, b]) => [a, b]);
-  edges.push([nearest.a, 3], [3, nearest.b], [3, 4]);
+  edges.push([nearest.a, junction], [junction, nearest.b], [junction, destination]);
   const costs = nodes.map(() => Infinity), previous = nodes.map(() => -1), visited = new Set<number>();
   costs[start] = 0;
   while (visited.size < nodes.length) {
     let current = -1;
     nodes.forEach((_, i) => { if (!visited.has(i) && (current === -1 || costs[i] < costs[current])) current = i; });
     if (current === -1 || !Number.isFinite(costs[current])) return null;
-    if (current === 4) break;
+    if (current === destination) break;
     visited.add(current);
     for (const [a, b] of edges) {
       const next = a === current ? b : b === current ? a : -1;
@@ -61,12 +66,12 @@ export function routeToPin(value: unknown, start = 0): GeoRoute | null {
       if (cost < costs[next]) { costs[next] = cost; previous[next] = current; }
     }
   }
-  const indices = [4];
+  const indices = [destination];
   while (indices[0] !== start) { const prev = previous[indices[0]]; if (prev < 0) return null; indices.unshift(prev); }
   const closest = [...campusStops].sort((a, b) => distance(value, a) - distance(value, b))[0];
-  return { version: "ucm-simulation-v1", destination: { lat: value.lat, lng: value.lng, confirmed: true },
+  return { version: "ucm-simulation-v2", destination: { lat: value.lat, lng: value.lng, confirmed: true },
     label: closest.label, points: indices.map(i => ({ lat: nodes[i].lat, lng: nodes[i].lng })),
-    meters: Math.round(costs[4] * ROBOT_METERS_PER_SECOND), seconds: Math.ceil(costs[4]) };
+    meters: Math.round(costs[destination] * ROBOT_METERS_PER_SECOND), seconds: Math.ceil(costs[destination]) };
 }
 export function confirmedRoute(value: unknown): GeoRoute | null {
   return (value as DeliveryPin | null)?.confirmed === true ? routeToPin(value) : null;
