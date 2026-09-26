@@ -1,5 +1,6 @@
 import type { Catalog, Reservation } from "../types";
 import { inventoryTimestamp } from "./inventoryFreshness.ts";
+import sampleCatalog from "../../shared/catalog.json" with { type: "json" };
 
 export const INVENTORY_REFRESH_MS = 15 * 60 * 1000;
 export const INVENTORY_CACHE_KEY = "campus-inventory-v1";
@@ -23,6 +24,8 @@ export function readInventorySnapshot(storage: Reader): InventorySnapshot | null
     delete menu.inventoryUpdatedAt;
     menu.responseGeneratedAt = inventoryTimestamp(menu.responseGeneratedAt);
     menu.products = menu.products.map((p: Record<string, unknown>) => ({ ...p,
+      // Preserve old offline stock snapshots while upgrading sample pickup metadata.
+      storeId: p.storeId ?? sampleCatalog.products.find(product => product.id === p.id)?.storeId,
       stockUpdatedAt: inventoryTimestamp(p.stockUpdatedAt), syncedAt: inventoryTimestamp(p.syncedAt),
     }));
     return value;

@@ -19,6 +19,15 @@ test("inventory refresh is due at exactly fifteen minutes, including on reconnec
   assert.equal(inventoryNeedsRefresh(null, 1000), true);
   assert.equal(inventoryNeedsRefresh(2000, 1000), true);
 });
+
+test("older cached catalogs gain store assignments without refreshing their stock timestamps", () => {
+  const snapshot = { catalog: { ...catalog, products: catalog.products.map(({ storeId, ...p }) => ({ ...p, stock: 3 })) }, fetchedAt: 1100 };
+  const restored = readInventorySnapshot({ getItem: () => JSON.stringify(snapshot) });
+  assert.equal(restored.catalog.products.find(p => p.id === "sandwich").storeId, "library");
+  assert.equal(restored.catalog.products.find(p => p.id === "noodles").storeId, "summits");
+  assert.equal(restored.catalog.products[0].stock, 3);
+  assert.equal(restored.fetchedAt, 1100);
+});
 test("missing, corrupt, or inaccessible offline snapshots safely fall back", () => {
   for (const text of [null, "{", "{}", JSON.stringify({ fetchedAt: 10, catalog: {} })]) {
     assert.equal(readInventorySnapshot({ getItem: () => text }), null);
