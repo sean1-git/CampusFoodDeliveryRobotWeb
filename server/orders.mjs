@@ -4,6 +4,7 @@
  */
 import catalog from "../shared/catalog.json" with { type: "json" };
 import { json, readSmallJson } from "./http.mjs";
+import { deliveryTimeline } from "../shared/campusRouting.ts";
 import {
   ensureInventory,
   settleTicks,
@@ -37,7 +38,7 @@ function orderCooldown(retryAt) {
 
 // Convert a database row into the response shape and derive progress from elapsed time.
 export function publicOrder(row, now) {
-  const elapsed = now - row.created_at;
+  const timeline = deliveryTimeline(row.location, row.created_at, now);
   return {
     id: row.id,
     items: JSON.parse(row.items),
@@ -46,13 +47,8 @@ export function publicOrder(row, now) {
     totalCents: row.total,
     location: row.location,
     createdAt: row.created_at,
-    arrivesAt: row.created_at + 65000,
-    status:
-      elapsed < 20000
-        ? "preparing"
-        : elapsed < 65000
-          ? "delivering"
-          : "delivered",
+    ...timeline,
+    serverNow: now,
     mode: "demo",
   };
 }

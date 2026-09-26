@@ -19,7 +19,7 @@ export function useCampusStore() {
   const [session, setSession] = useState<Session | null>(null);
   const [cart, setCart] = useState<Cart>(initialCart);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [view, setView] = useState<"shop" | "orders">("shop");
+  const [view, setView] = useState<"shop" | "orders" | "map">("shop");
   const [filter, setFilter] = useState("All items");
   const [location, setLocation] = useState(sampleCatalog.locations[0]);
   const [reservation, setReservation] = useState<Reservation | null>(restoreHold);
@@ -65,7 +65,7 @@ export function useCampusStore() {
           publishTabEvent("session");
         }
         const data = await requestJson<{ orders: Order[] }>("/api/orders");
-        setOrders(data.orders);
+        setOrders(data.orders.map((order) => ({ ...order, receivedAt: Date.now() })));
       } catch (failure) {
         const problem = failure as ApiError;
         if (problem.status === 401) {
@@ -88,7 +88,7 @@ export function useCampusStore() {
     save("campus-cart", {});
     setCart({});
     setView("orders");
-    setOrders((old) => [order, ...old.filter((o) => o.id !== order.id)]);
+    setOrders((old) => [{ ...order, receivedAt: Date.now() }, ...old.filter((o) => o.id !== order.id)]);
     setNotice("Demo order placed. No real money was charged and no robot was dispatched.");
     publishTabEvent("orders");
     void refresh().catch(() => {});

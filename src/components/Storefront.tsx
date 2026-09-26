@@ -45,7 +45,7 @@ export function Storefront({
           </strong>
           <span>Robot delivery · demo</span>
           <span className="availability-note">
-            Live robot pickup availability and ETA will be added later.
+            Explore the campus map to preview a simulated delivery route.
           </span>
           <span className="fee">
             {money(catalog.deliveryFeeCents)} delivery

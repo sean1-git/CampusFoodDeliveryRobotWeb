@@ -31,6 +31,7 @@ type Props = Pick<
   | "secondsLeft"
   | "orderCooldownMs"
   | "nextOrderAt"
+  | "setView"
 >;
 
 export function ShoppingBag({
@@ -56,6 +57,7 @@ export function ShoppingBag({
   secondsLeft,
   orderCooldownMs,
   nextOrderAt,
+  setView,
 }: Props) {
   return (
     <aside className="bag-panel" id="bag">
@@ -190,6 +192,7 @@ export function ShoppingBag({
           ) : (
             <>
               <label className="field-label" htmlFor="bag-location">Delivery location</label>
+              <button type="button" className="back" onClick={() => setView("map")}>Choose on campus map →</button>
               <select id="bag-location" value={location} onChange={(event) => setLocation(event.target.value)}>
                 {catalog.locations.map((place) => <option key={place}>{place}</option>)}
               </select>

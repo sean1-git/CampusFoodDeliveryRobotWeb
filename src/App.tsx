@@ -8,6 +8,7 @@ import { StoreHeader } from "./components/StoreHeader";
 import { Storefront } from "./components/Storefront";
 import { ShoppingBag } from "./components/ShoppingBag";
 import { OrderHistory } from "./components/OrderHistory";
+import { CampusDelivery } from "./components/CampusMap";
 import { Bag } from "./components/BagIcon";
 import { money } from "./lib/money";
 import { formatOrderCooldown } from "./lib/orderCooldown";
@@ -59,7 +60,7 @@ export default function App() {
             </button>
           </div>
         )}
-        {error && (
+        {error && view !== "map" && (
           <div className="message warning" role="alert">
             {error}
             <button onClick={() => void store.reconnect()} disabled={booting}>
@@ -76,7 +77,7 @@ export default function App() {
         <div className={notice ? "message" : "sr-only"} role="status" aria-live="polite">
           {notice}
         </div>
-        <div className="message" role="status">
+        {view !== "map" && <div className="message" role="status">
           <div>
             {store.inventoryFetchedAt
               ? <>Catalog last fetched by this browser: {new Date(store.inventoryFetchedAt).toLocaleString()}.</>
@@ -86,8 +87,11 @@ export default function App() {
             {store.inventoryUnavailable && " The latest refresh failed; showing your last saved snapshot."}
             {store.lastApiSuccessAt && <div>Last successful server contact: {new Date(store.lastApiSuccessAt).toLocaleString()}.</div>}
           </div>
-        </div>
-        {view === "shop" ? (
+        </div>}
+        {view === "map" ? (
+          <CampusDelivery location={store.reservation?.body.location ?? store.pending?.body.location ?? store.location}
+            setLocation={store.setLocation} locked={locked} online={online} setView={store.setView} />
+        ) : view === "shop" ? (
           <div className="shop-layout">
             <Storefront {...store} />
             <ShoppingBag {...store} />

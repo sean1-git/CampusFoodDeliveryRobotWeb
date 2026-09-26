@@ -37,6 +37,7 @@ export function StoreHeader({
         </span>
       </a>
       <nav aria-label="Main navigation">
+        <button className={view === "map" ? "nav-active" : ""} onClick={() => setView("map")}>Campus map</button>
         <button
           className={view === "shop" ? "nav-active" : ""}
           onClick={() => setView("shop")}

@@ -34,6 +34,9 @@ export type Order = {
   location: string;
   createdAt: number;
   arrivesAt: number;
+  departsAt?: number;
+  serverNow?: number;
+  receivedAt?: number;
   status: "preparing" | "delivering" | "delivered";
 };
 export type Pending = {

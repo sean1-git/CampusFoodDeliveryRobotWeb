@@ -5,9 +5,10 @@
 import { money } from "../lib/money";
 import type { CampusStore } from "../hooks/useCampusStore";
 import { Bag } from "./BagIcon";
+import { OrderRoute } from "./CampusMap";
 
-type Props = Pick<CampusStore, "orders" | "setView">;
-export function OrderHistory({ orders, setView }: Props) {
+type Props = Pick<CampusStore, "orders" | "setView" | "online">;
+export function OrderHistory({ orders, setView, online }: Props) {
   return (
     <section className="orders-view">
       <p className="eyebrow">FROM OUR STORE TO YOUR DOOR</p>
@@ -21,9 +22,8 @@ export function OrderHistory({ orders, setView }: Props) {
         </button>
       </div>
       <p className="simulation-note">
-        Demo timeline: preparing for 20 seconds, then delivering. Marked
-        delivered after about 65 seconds. Updates every 5 seconds while
-        connected.
+        Demo timeline: 20 seconds to prepare, then a simulated trip along the
+        campus route. Order status refreshes every 5 seconds while connected.
       </p>
       {orders.length === 0 ? (
         <div className="empty-orders">
@@ -76,8 +76,7 @@ export function OrderHistory({ orders, setView }: Props) {
             <p className="delivery-eta" role="status">
               {order.status === "preparing" ? (
                 <>
-                  Robot pickup ETA: live availability is not connected yet;
-                  this ETA will be added later. Demo delivery target: {new Date(order.arrivesAt).toLocaleTimeString([], {
+                  Simulated delivery target: {new Date(order.arrivesAt).toLocaleTimeString([], {
                     hour: "numeric",
                     minute: "2-digit",
                   })}.
@@ -88,9 +87,10 @@ export function OrderHistory({ orders, setView }: Props) {
                   minute: "2-digit",
                 })} (demo estimate).</>
               ) : (
-                <>Delivery completed at the site. Live robot ETA support will be added later.</>
+                <>Simulated delivery completed. No physical robot was dispatched.</>
               )}
             </p>
+            <OrderRoute order={order} online={online} />
             <div className="order-info">
               <div>
                 <span>MEETING POINT</span>

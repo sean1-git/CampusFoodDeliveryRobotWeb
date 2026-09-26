@@ -80,7 +80,7 @@ Use the app's Install app control for browser-specific guidance. Browser support
 | `scripts/build-pwa.mjs` | Generates the production service worker |
 | `tests/` | API and PWA checks |
 
-Accounts, sessions, cooldowns, and demo orders are stored locally in `.data/campus-demo.sqlite`. Cart contents are stored in the browser. Each student account starts with $50 in simulated funds. A demo delivery costs $1, and order progress is simulated over roughly 65 seconds. A student account may place only one robot order per hour, including across browsers, devices, and replacement login cookies that resolve to that account. Live robot pickup availability and ETAs are placeholders for a later integration.
+Accounts, sessions, cooldowns, and demo orders are stored locally in `.data/campus-demo.sqlite`. Cart contents are stored in the browser. Each student account starts with $50 in simulated funds. A demo delivery costs $1. Orders prepare for 20 seconds and then follow the selected campus route's simulated travel time. A student account may place only one robot order per hour, including across browsers, devices, and replacement login cookies that resolve to that account. Live robot pickup availability and real-world ETAs still require a robot integration.
 
 ### Shared login, checkout identity, and multiple tabs
 
@@ -144,6 +144,16 @@ The suite covers inventory competition, five-minute holds and expiry, confirmati
 `tests/account-cooldown.test.mjs` additionally verifies multiple sessions for one student, new cookies, cross-account isolation, concurrent requests, persistent cooldowns across restarts/connections, spoofed client identity/time, exact deadline boundaries, transaction rollback, and legacy migration preservation.
 
 These checks are not a full penetration test or approval to process real school payments.
+
+## Campus-map simulation
+
+- Open **Campus map**, choose one of the three existing checkout destinations, and start the standalone preview. This never places an order or spends funds. The destination also feeds the shopping bag; a held checkout keeps its original destination until cancelled.
+- `public/uc-merced-campus.jpg` is Sean's supplied campus image. It is low resolution and has no georeferencing. Dispatch, meeting points, paths and segment times in `shared/campusRouting.ts` are explicitly **illustrative**, not surveyed locations or robot-safe navigation instructions. The network is version 1 and should stay stable for existing order timelines.
+- Dijkstra selects the lowest total estimated travel time over the connected demo graph. The robot interpolates along each chosen edge. Unreachable points have no route; there is no straight-line fallback through buildings.
+- Confirmed orders prepare for 20 seconds, then travel for the selected route's duration. The API derives departure, arrival and status from the stored order creation time. The map uses server time plus time since receipt to reduce device-clock error; reload/reconnection resumes the same order timeline. Offline movement is explicitly a local simulation, not live telemetry. Standalone previews reset when leaving the map or reloading.
+- **Use my location** requests a fresh one-time browser location with permission and a 12-second timeout. Coordinates, accuracy and capture time exist only in component memory, are never sent to the API or written to browser storage, and are discarded when leaving the map. The image is not GPS calibrated: position is not plotted or automatically snapped to a destination. Manual selection remains available if permission is denied, unavailable or timed out. HTTPS/localhost is required; the same-origin Permissions Policy permits location and still disables camera/microphone.
+- No Google API key, Google geolocation request, AI service or real robot connection is used in this phase. The map is part of the offline app cache. A detailed georeferenced campus path dataset and confirmed dispatch/meeting locations are needed before GPS-to-map positioning or operational routing can be added.
+- Validate route choice, disconnected paths, interpolation, arrival boundaries and offline map caching with `node --test tests/campus-routing.test.mjs tests/pwa.test.mjs`.
 
 ## Remaining work before launch
 

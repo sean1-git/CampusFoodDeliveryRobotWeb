@@ -58,6 +58,7 @@ test("offline navigation falls back to the cached app and APIs bypass the cache"
   sw.handlers.install({ waitUntil: (promise) => (installation = promise) });
   await installation;
   assert.ok(sw.stored.has("/index.html"));
+  assert.ok(sw.stored.has("/uc-merced-campus.jpg"));
   assert.ok([...sw.stored.keys()].every((path) => !path.startsWith("/api/")));
   let response;
   sw.handlers.fetch({
