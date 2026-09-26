@@ -160,7 +160,7 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
     .prepare("SELECT * FROM checkout_queue WHERE account_id = ? AND request_key = ?")
     .bind(session.account_id, key)
     .first();
-  if (!queuedResult) return json({ code: "active_reservation", error: "Your student account already has a pending checkout. Finish or cancel it before starting another, even in a different browser." }, 409);
+  if (!queuedResult) return json({ code: "active_reservation", error: "Your demo wallet already has a pending checkout. Finish or cancel it before starting another." }, 409);
   if (queuedResult.request_hash !== fingerprint || queuedResult.kind !== kind)
     return json(
       { error: "This checkout ID was already used for a different cart." },

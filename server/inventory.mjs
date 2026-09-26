@@ -1,4 +1,5 @@
 import catalog from "../shared/catalog.json" with { type: "json" };
+import { eligibleAccountSql } from "./auth.mjs";
 
 export const TICK_MS = 100;
 export const INITIAL_STOCK = 20;
@@ -62,7 +63,7 @@ const stockFits = `NOT EXISTS (
 const fundsFit = `q.total <= ? - (SELECT COALESCE(SUM(total), 0) FROM orders WHERE account_id = q.account_id)`;
 const cooldownFit = `EXISTS (
   SELECT 1 FROM accounts a
-  WHERE a.id = q.account_id AND a.kind = 'student' AND a.cooldown_until <= ?
+  WHERE a.id = q.account_id AND ${eligibleAccountSql} AND a.cooldown_until <= ?
 )`;
 const head = `q.status = 'pending' AND q.ready_at <= ?
   AND q.sequence = (SELECT MIN(sequence) FROM checkout_queue WHERE status = 'pending')`;

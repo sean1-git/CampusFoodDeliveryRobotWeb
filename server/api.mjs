@@ -1,11 +1,11 @@
 /**
- * Routes /api requests and resolves server-side authenticated student sessions.
- * Restricts orders to the student account and delegates demo checkout to orders.mjs.
+ * Routes /api requests and resolves server-issued demo or student sessions.
+ * Restricts orders to the account and delegates simulated checkout to orders.mjs.
  */
 import { json } from "./http.mjs";
 import { publicOrder, createDemoOrder, checkoutResult, reservationAction } from "./orders.mjs";
 import { ensureInventory, inventoryRecords } from "./inventory.mjs";
-import { authenticatedSession } from "./auth.mjs";
+import { authenticatedSession, issueDemoSession } from "./auth.mjs";
 import { canonicalOrigin } from "./origin.mjs";
 export { secureResponse } from "./http.mjs";
 import catalog from "../shared/catalog.json" with { type: "json" };
@@ -56,9 +56,20 @@ export async function handleApi(request, env, now = Date.now()) {
         ...p, ...(inventory.get(p.id) ?? { stock: 0, stockUpdatedAt: null, syncedAt: null }),
       })), mode: "demo", responseGeneratedAt: now });
     }
-    const session = await authenticatedSession(request, db, now);
+    let session = await authenticatedSession(request, db, now, true);
+    let sessionCookie;
+    if (!session && url.pathname === "/api/session" && request.method === "GET") {
+      const allowed = new Set([canonicalOrigin(env.CANONICAL_ORIGIN, env.NODE_ENV === "production") || url.origin,
+        ...configuredOrigins(env)]);
+      if (request.headers.get("sec-fetch-site") === "cross-site"
+        || (request.headers.has("origin") && !allowed.has(request.headers.get("origin")))) {
+        return json({ error: "Request origin is not allowed." }, 403);
+      }
+      session = await issueDemoSession(db, now, env.NODE_ENV === "production" || url.protocol === "https:");
+      sessionCookie = session.cookie;
+    }
     if (!session) return json({ code: "authentication_required",
-      error: "School sign-in is required to check out. School SSO is not connected yet; you can still browse the catalog." }, 401);
+      error: "Your demo session expired. Reconnect to start a new demo wallet." }, 401);
     if (url.pathname === "/api/session" && request.method === "GET") {
       const spent = await db
         .prepare(
@@ -79,6 +90,7 @@ export async function handleApi(request, env, now = Date.now()) {
           mode: "demo",
         },
         200,
+        sessionCookie ? { "Set-Cookie": sessionCookie } : {},
       );
     }
     if (url.pathname === "/api/reservations" && request.method === "POST") {

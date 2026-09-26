@@ -113,17 +113,17 @@ test("cooldown expires at the exact server deadline and ignores client identity/
   assert.equal((await call(DB, a, "/api/session")).body.nextOrderAt, accepted.body.createdAt + ORDER_COOLDOWN_MS);
 });
 
-test("anonymous, expired, and legacy sessions cannot create accounts or orders from client claims", async (t) => {
+test("demo bootstrap does not authenticate client student claims or revive expired and legacy sessions", async (t) => {
   const { DB, a } = await fixture(t);
   const anonymous = await call(DB, null, "/api/session");
-  assert.equal(anonymous.status, 401);
-  assert.equal(anonymous.headers.has("set-cookie"), false);
+  assert.equal(anonymous.status, 200);
+  assert.equal(anonymous.headers.has("set-cookie"), true);
   assert.equal((await call(DB, null, "/api/orders", { method: "POST", body: { ...basket, studentId: "student-a" },
     headers: { "x-student-id": "student-a" } })).status, 401);
   const expired = await studentSession(DB, "student-a", Date.now() - SESSION_AGE - 100);
   assert.equal((await call(DB, expired, "/api/orders", { method: "POST", body: basket })).status, 401);
   await DB.prepare("UPDATE accounts SET kind = 'legacy' WHERE id = ?").bind(a.account_id).run();
-  assert.equal((await call(DB, a, "/api/session")).status, 401);
+  assert.equal((await call(DB, a, "/api/orders")).status, 401);
 });
 
 test("SSO account mapping includes issuer and keeps cooldown out of the cookie", async (t) => {

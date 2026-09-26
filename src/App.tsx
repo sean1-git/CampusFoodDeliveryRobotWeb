@@ -24,7 +24,7 @@ export default function App() {
     <>
       <div className="demo-strip">
         <span>DEMO EXPERIENCE</span> Sample menu, simulated funds & robot
-        delivery. No real purchases.
+        delivery. No login or real purchases. Each browser gets a demo wallet.
       </div>
       <StoreHeader {...store} {...pwa} />
       <main>
