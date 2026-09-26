@@ -6,7 +6,7 @@ import { ensureInventory, availableInventory, HOLD_MS, ORDER_COOLDOWN_MS } from 
 import { studentSession } from "./student-fixture.mjs";
 
 const origin = "https://campus.test";
-const body = { items: [{ id: "sandwich", quantity: 1 }], location: "Library entrance" };
+const body = { items: [{ id: "sandwich", quantity: 1 }], location: "Library Walk", destination: { lat: 37.366402, lng: -120.423777, confirmed: true } };
 async function fixture(t) {
   const DB = openDatabase();
   t.after(() => DB.close());

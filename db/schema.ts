@@ -47,6 +47,7 @@ export const orders = sqliteTable(
     subtotal: integer("subtotal").notNull(),
     total: integer("total").notNull(),
     location: text("location").notNull(),
+    deliveryRoute: text("delivery_route"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
@@ -90,6 +91,7 @@ export const checkoutQueue = sqliteTable("checkout_queue", {
   subtotal: integer("subtotal").notNull(),
   total: integer("total").notNull(),
   location: text("location").notNull(),
+    deliveryRoute: text("delivery_route"),
   readyAt: integer("ready_at").notNull(),
   status: text("status").notNull().default("pending"),
   kind: text("kind").notNull().default("purchase"),

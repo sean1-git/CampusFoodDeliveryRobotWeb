@@ -7,7 +7,7 @@ import { studentSession } from "./student-fixture.mjs";
 const origin = "https://campus.test";
 const basket = {
   items: [{ id: "sandwich", quantity: 1 }],
-  location: "Library entrance",
+  location: "Library Walk", destination: { lat: 37.366402, lng: -120.423777, confirmed: true },
 };
 async function fixture(t) {
   const DB = openDatabase();
@@ -84,7 +84,7 @@ test("same request ID cannot be reused with a different order", async (t) => {
     u,
     "/api/orders",
     "POST",
-    { ...basket, location: "Student center" },
+    { ...basket, destination: { lat: 37.363452, lng: -120.427793, confirmed: true } },
     key,
   );
   assert.equal(response.status, 409);
@@ -175,7 +175,7 @@ test("negative quantities, duplicate items and unknown locations rejected", asyn
   for (const body of [
     { ...basket, items: [{ id: "sandwich", quantity: -1 }] },
     { ...basket, items: [...basket.items, ...basket.items] },
-    { ...basket, location: "Unknown" },
+    { ...basket, destination: { lat: 0, lng: 0, confirmed: true } },
   ])
     assert.equal((await f.request(u, "/api/orders", "POST", body)).status, 400);
   assert.equal(
@@ -187,7 +187,7 @@ test("delivery status follows the simulated clock without another dispatch", asy
   const f = await fixture(t),
     u = await f.user();
   const order = await (
-    await f.request(u, "/api/orders", "POST", basket)
+    await f.request(u, "/api/orders", "POST", { ...basket, destination: { lat: 37.363146, lng: -120.425201, confirmed: true } })
   ).json();
   const request = () =>
     new Request(origin + "/api/orders/" + order.id, {
@@ -199,7 +199,7 @@ test("delivery status follows the simulated clock without another dispatch", asy
     "delivering",
   );
   assert.equal(
-    (await (await handleApi(request(), f.env, order.createdAt + 70000)).json())
+    (await (await handleApi(request(), f.env, order.arrivesAt)).json())
       .status,
     "delivered",
   );

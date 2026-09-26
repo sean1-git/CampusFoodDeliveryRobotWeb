@@ -5,6 +5,7 @@
 import catalog from "../shared/catalog.json" with { type: "json" };
 import { json, readSmallJson } from "./http.mjs";
 import { deliveryTimeline } from "../shared/campusRouting.ts";
+import { pickupRoute, geoTimeline } from "../shared/campusGeo.ts";
 import {
   ensureInventory,
   settleTicks,
@@ -38,7 +39,8 @@ function orderCooldown(retryAt) {
 
 // Convert a database row into the response shape and derive progress from elapsed time.
 export function publicOrder(row, now) {
-  const timeline = deliveryTimeline(row.location, row.created_at, now);
+  const deliveryRoute = row.delivery_route ? JSON.parse(row.delivery_route) : null;
+  const timeline = deliveryRoute ? geoTimeline(deliveryRoute, row.created_at, now) : deliveryTimeline(row.location, row.created_at, now);
   return {
     id: row.id,
     items: JSON.parse(row.items),
@@ -46,6 +48,7 @@ export function publicOrder(row, now) {
     deliveryFeeCents: catalog.deliveryFeeCents,
     totalCents: row.total,
     location: row.location,
+    deliveryRoute,
     createdAt: row.created_at,
     ...timeline,
     serverNow: now,
@@ -67,8 +70,7 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
     !body ||
     !Array.isArray(body.items) ||
     body.items.length < 1 ||
-    body.items.length > 6 ||
-    !catalog.locations.includes(body.location)
+    body.items.length > 6
   ) {
     return json(
       { error: "Choose products and a supported delivery location." },
@@ -101,7 +103,9 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
     });
   }
   items.sort((a, b) => a.id.localeCompare(b.id));
-  const fingerprint = JSON.stringify({ items, location: body.location });
+  const route = pickupRoute(body.destination, items.map(item => catalog.products.find(p => p.id === item.id).storeId));
+  if (!route) return json({ code: "delivery_pin_required", error: "Confirm an exact delivery pin on a highlighted UC Merced demo path before checkout. Pins outside the service area are not accepted." }, 400);
+  const fingerprint = JSON.stringify({ items, destination: route.destination });
   const existing = await db
     .prepare("SELECT * FROM orders WHERE account_id = ? AND request_key = ?")
     .bind(session.account_id, key)
@@ -137,8 +141,8 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
   // never decide priority. ready_at is the end of a server-assigned 100 ms tick.
   await db
     .prepare(
-      `INSERT INTO checkout_queue (order_id, session_id, account_id, request_key, request_hash, items, subtotal, total, location, ready_at, kind, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO checkout_queue (order_id, session_id, account_id, request_key, request_hash, items, subtotal, total, location, ready_at, kind, expires_at, delivery_route)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT DO NOTHING`,
     )
     .bind(
@@ -150,10 +154,11 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
       JSON.stringify(items),
       subtotal,
       total,
-      body.location,
+      route.label,
       (Math.floor(now / TICK_MS) + 1) * TICK_MS,
       kind,
       kind === "reservation" ? now + HOLD_MS : 0,
+      JSON.stringify(route),
     )
     .run();
   const queuedResult = await db
@@ -225,6 +230,7 @@ export async function reservationAction(request, db, session, key, action, now) 
     const result = await db.prepare("SELECT status FROM checkout_queue WHERE sequence = ?").bind(queued.sequence).first();
     return result.status === "accepted" ? checkoutResult(db, session.account_id, key, now) : json({ status: "cancelled" });
   }
+  if (queued.status !== "accepted" && !queued.delivery_route) return json({ code: "delivery_pin_required", error: "Cancel this old checkout and confirm a delivery pin before purchasing." }, 400);
   if (queued.status === "pending") await settleTicks(db, now);
   await confirmHold(db, session.account_id, key, now);
   return checkoutResult(db, session.account_id, key, now);

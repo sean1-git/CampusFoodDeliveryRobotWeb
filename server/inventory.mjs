@@ -84,8 +84,8 @@ export async function settleTicks(db, now) {
       WHERE q.kind = 'reservation' AND q.sequence = ? AND ${head}`)
       .bind(now, now, catalog.initialBalanceCents, now, sequence, now),
     db.prepare(`INSERT INTO orders
-      (id, session_id, account_id, request_key, request_hash, items, subtotal, total, location, created_at)
-      SELECT q.order_id, q.session_id, q.account_id, q.request_key, q.request_hash, q.items, q.subtotal, q.total, q.location, ?
+      (id, session_id, account_id, request_key, request_hash, items, subtotal, total, location, created_at, delivery_route)
+      SELECT q.order_id, q.session_id, q.account_id, q.request_key, q.request_hash, q.items, q.subtotal, q.total, q.location, ?, q.delivery_route
       FROM checkout_queue q WHERE q.kind = 'purchase' AND q.sequence = ? AND ${head} AND ${fundsFit} AND ${stockFits} AND ${cooldownFit}
       ON CONFLICT(account_id, request_key) DO NOTHING`)
       .bind(now, sequence, now, catalog.initialBalanceCents, now, now),
@@ -110,8 +110,8 @@ export async function settleTicks(db, now) {
 export async function confirmHold(db, accountId, key, now) {
   await db.batch([
     db.prepare(`INSERT INTO orders
-      (id, session_id, account_id, request_key, request_hash, items, subtotal, total, location, created_at)
-      SELECT q.order_id, q.session_id, q.account_id, q.request_key, q.request_hash, q.items, q.subtotal, q.total, q.location, ?
+      (id, session_id, account_id, request_key, request_hash, items, subtotal, total, location, created_at, delivery_route)
+      SELECT q.order_id, q.session_id, q.account_id, q.request_key, q.request_hash, q.items, q.subtotal, q.total, q.location, ?, q.delivery_route
       FROM checkout_queue q WHERE q.account_id = ? AND q.request_key = ?
         AND q.kind = 'reservation' AND q.status = 'held' AND q.expires_at > ? AND ${fundsFit} AND ${cooldownFit}
       ON CONFLICT(account_id, request_key) DO NOTHING`)

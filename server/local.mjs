@@ -48,6 +48,7 @@ const server = createServer(async (incoming, outgoing) => {
         INTEGRATION_MODE: process.env.INTEGRATION_MODE || "demo",
         CANONICAL_ORIGIN: process.env.CANONICAL_ORIGIN,
         NODE_ENV: process.env.NODE_ENV,
+        GOOGLE_MAPS_BROWSER_KEY: process.env.GOOGLE_MAPS_BROWSER_KEY,
         // Vite serves the UI on 5173 and proxies API calls to this server.
         ALLOWED_ORIGINS:
           process.env.ALLOWED_ORIGINS ||

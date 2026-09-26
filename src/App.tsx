@@ -8,7 +8,7 @@ import { StoreHeader } from "./components/StoreHeader";
 import { Storefront } from "./components/Storefront";
 import { ShoppingBag } from "./components/ShoppingBag";
 import { OrderHistory } from "./components/OrderHistory";
-import { CampusDelivery } from "./components/CampusMap";
+import { DeliveryLocation } from "./components/DeliveryMap";
 import { Bag } from "./components/BagIcon";
 import { money } from "./lib/money";
 import { formatOrderCooldown } from "./lib/orderCooldown";
@@ -89,8 +89,7 @@ export default function App() {
           </div>
         </div>}
         {view === "map" ? (
-          <CampusDelivery location={store.reservation?.body.location ?? store.pending?.body.location ?? store.location}
-            setLocation={store.setLocation} locked={locked} online={online} setView={store.setView} />
+          <DeliveryLocation {...store} destination={store.reservation?.body.destination ?? store.pending?.body.destination ?? store.destination} />
         ) : view === "shop" ? (
           <div className="shop-layout">
             <Storefront {...store} />

@@ -3,6 +3,7 @@
  * These help catch coding mistakes; the server still validates incoming requests.
  */
 import type sampleCatalog from "../shared/catalog.json";
+import type { DeliveryPin, GeoRoute } from "../shared/campusGeo";
 
 export type Product = (typeof sampleCatalog.products)[number] & {
   stock?: number;
@@ -32,6 +33,7 @@ export type Order = {
   deliveryFeeCents: number;
   totalCents: number;
   location: string;
+  deliveryRoute?: GeoRoute | null;
   createdAt: number;
   arrivesAt: number;
   departsAt?: number;
@@ -41,5 +43,5 @@ export type Order = {
 };
 export type Pending = {
   key: string;
-  body: { items: { id: string; quantity: number }[]; location: string };
+  body: { items: { id: string; quantity: number }[]; location: string; destination?: DeliveryPin };
 };

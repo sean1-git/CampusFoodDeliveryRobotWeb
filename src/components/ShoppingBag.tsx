@@ -21,7 +21,7 @@ type Props = Pick<
   | "checkout"
   | "placeOrder"
   | "location"
-  | "setLocation"
+  | "destination"
   | "session"
   | "online"
   | "submitting"
@@ -47,7 +47,7 @@ export function ShoppingBag({
   checkout,
   placeOrder,
   location,
-  setLocation,
+  destination,
   session,
   online,
   submitting,
@@ -137,16 +137,8 @@ export function ShoppingBag({
               <label className="field-label" htmlFor="location">
                 Meet your delivery at
               </label>
-              <select
-                id="location"
-                value={reservation?.body.location ?? pending?.body.location ?? location}
-                disabled={locked}
-                onChange={(event) => setLocation(event.target.value)}
-              >
-                {catalog.locations.map((place) => (
-                  <option key={place}>{place}</option>
-                ))}
-              </select>
+              <p>{reservation?.body.location ?? pending?.body.location ?? location}</p>
+              <p className="checkout-note">Confirmed pin: {(reservation?.body.destination ?? pending?.body.destination)?.lat.toFixed(6)}, {(reservation?.body.destination ?? pending?.body.destination)?.lng.toFixed(6)}</p>
               <div className="payment-method">
                 <span>▤ &nbsp; Demo campus wallet</span>
                 <strong>
@@ -191,11 +183,9 @@ export function ShoppingBag({
             </form>
           ) : (
             <>
-              <label className="field-label" htmlFor="bag-location">Delivery location</label>
-              <button type="button" className="back" onClick={() => setView("map")}>Choose on campus map →</button>
-              <select id="bag-location" value={location} onChange={(event) => setLocation(event.target.value)}>
-                {catalog.locations.map((place) => <option key={place}>{place}</option>)}
-              </select>
+              <p className="field-label">Delivery location</p>
+              <button type="button" className="back" onClick={() => setView("map")}>{destination ? "Change delivery pin →" : "Choose your delivery pin →"}</button>
+              <p className="checkout-note">{destination ? <>Confirmed: {destination.lat.toFixed(6)}, {destination.lng.toFixed(6)}</> : "Choose and confirm a supported campus pin before we process your order."}</p>
               <p className="checkout-note">
                 {orderCooldownMs > 0 && nextOrderAt
                   ? <>One robot order per hour. Multiple order requests are blocked. Time remaining: <strong>{formatOrderCooldown(orderCooldownMs)}</strong>; your next order is available at {new Date(nextOrderAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.</>
@@ -206,7 +196,7 @@ export function ShoppingBag({
               disabled={!online || !session || submitting || orderCooldownMs > 0}
               onClick={() => void beginCheckout()}
             >
-              {orderCooldownMs > 0 ? "Order available later" : <>Reserve & review order <span>→</span></>}
+              {orderCooldownMs > 0 ? "Order available later" : !destination ? "Choose delivery pin →" : <>Reserve & review order <span>→</span></>}
               </button>
             </>
           )}

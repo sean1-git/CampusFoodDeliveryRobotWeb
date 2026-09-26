@@ -7,6 +7,8 @@ import { readReservation, reservationExpired, RESERVATION_KEY } from "../lib/inv
 import { publishTabEvent, subscribeTabEvents } from "../lib/tabSync";
 import { createRefreshQueue } from "../lib/refreshQueue";
 import { useInventory } from "./useInventory";
+import { confirmedRoute } from "../../shared/campusGeo";
+import type { DeliveryPin } from "../../shared/campusGeo";
 
 type CheckoutReply = Order | HeldCheckout | QueuedCheckout;
 type ApiError = Error & { status?: number; code?: string };
@@ -22,6 +24,7 @@ export function useCampusStore() {
   const [view, setView] = useState<"shop" | "orders" | "map">("shop");
   const [filter, setFilter] = useState("All items");
   const [location, setLocation] = useState(sampleCatalog.locations[0]);
+  const [destination, setDestination] = useState<DeliveryPin | null>(null);
   const [reservation, setReservation] = useState<Reservation | null>(restoreHold);
   const reservationRef = useRef(reservation);
   // Retain unfinished checkouts from the prior app version for safe recovery.
@@ -283,11 +286,12 @@ export function useCampusStore() {
   }
   async function beginCheckout() {
     if (!online || !session || busy.current || pending || !quantity || orderCooldownMs > 0) return;
+    if (!reservationRef.current && !confirmedRoute(destination)) { setView("map"); return; }
     busy.current = true;
     setSubmitting(true);
     setError("");
     const attempt: Reservation = reservationRef.current ?? {
-      key: crypto.randomUUID(), body: { items: lines.map((p) => ({ id: p.id, quantity: cart[p.id] })), location },
+      key: crypto.randomUUID(), body: { items: lines.map((p) => ({ id: p.id, quantity: cart[p.id] })), location: confirmedRoute(destination)!.label, destination: destination! },
       phase: "reserving", expiresAt: Date.now() + 300000, clockOffsetMs: 0,
     };
     writeHold(attempt);
@@ -354,7 +358,7 @@ export function useCampusStore() {
     finally { setBooting(false); }
   }
 
-  return { ...inventory, session, cart, orders, view, setView, filter, setFilter, location, setLocation,
+  return { ...inventory, session, cart, orders, view, setView, filter, setFilter, location, setLocation, destination, setDestination,
     checkout, online, error, notice, submitting, pending, reservation, secondsLeft, lastApiSuccessAt,
     orderCooldownMs, nextOrderAt: session?.nextOrderAt ?? null,
     booting, lines, quantity, subtotal, total, locked, activeOrders, change, beginCheckout, placeOrder,

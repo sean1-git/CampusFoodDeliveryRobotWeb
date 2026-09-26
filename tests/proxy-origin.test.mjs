@@ -96,7 +96,7 @@ test("HTTPS proxy URL passes origin validation without weakening student authent
   const send = (headers = {}, env = {}) => handleApi(new Request(url, {
     method: "POST", headers: { origin: "https://store.example", cookie: student.cookie,
       "x-csrf-token": student.csrf, "idempotency-key": crypto.randomUUID(), "content-type": "application/json", ...headers },
-    body: JSON.stringify({ items: [{ id: "sandwich", quantity: 1 }], location: "Library entrance" }),
+    body: JSON.stringify({ items: [{ id: "sandwich", quantity: 1 }], location: "Library Walk", destination: { lat: 37.366402, lng: -120.423777, confirmed: true } }),
   }), { DB, ...env });
   assert.equal((await send({ origin: "http://store.example" })).status, 403);
   assert.equal((await send({ origin: "https://attacker.example" })).status, 403);

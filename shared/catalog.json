@@ -1,13 +1,77 @@
 {
   "deliveryFeeCents": 100,
   "initialBalanceCents": 5000,
-  "locations": ["Library entrance", "Student center", "Residence hall courtyard"],
+  "locations": [
+    "Library entrance",
+    "Student center",
+    "Residence hall courtyard"
+  ],
   "products": [
-    {"id":"sandwich","name":"Garden club sandwich","description":"Avocado, crunchy greens & herbed spread.","category":"Lunch","priceCents":650,"emoji":"🥪","color":"#ecf1df","tag":"Campus favorite"},
-    {"id":"noodles","name":"Sesame noodle bowl","description":"Chilled noodles, vegetables & sesame dressing.","category":"Lunch","priceCents":750,"emoji":"🍜","color":"#fbe8da","tag":"Plant based"},
-    {"id":"salad","name":"Green goddess salad","description":"Fresh greens, chickpeas & creamy herb dressing.","category":"Lunch","priceCents":700,"emoji":"🥗","color":"#e3f0e8","tag":"Fresh daily"},
-    {"id":"coffee","name":"Cold brew coffee","description":"Slow steeped, smooth & ready for study time.","category":"Drinks","priceCents":375,"emoji":"☕","color":"#eee4dc","tag":"Study companion"},
-    {"id":"lemonade","name":"Sparkling lemonade","description":"A bright, bubbly citrus pick-me-up.","category":"Drinks","priceCents":300,"emoji":"🍋","color":"#faf2cf","tag":"Keep it cool"},
-    {"id":"cookie","name":"Chocolate chunk cookie","description":"A soft center with generous chocolate chunks.","category":"Snacks","priceCents":250,"emoji":"🍪","color":"#f3e3d1","tag":"A little treat"}
+    {
+      "id": "sandwich",
+      "name": "Garden club sandwich",
+      "description": "Avocado, crunchy greens & herbed spread.",
+      "category": "Lunch",
+      "priceCents": 650,
+      "emoji": "🥪",
+      "color": "#ecf1df",
+      "tag": "Campus favorite",
+      "storeId": "library"
+    },
+    {
+      "id": "noodles",
+      "name": "Sesame noodle bowl",
+      "description": "Chilled noodles, vegetables & sesame dressing.",
+      "category": "Lunch",
+      "priceCents": 750,
+      "emoji": "🍜",
+      "color": "#fbe8da",
+      "tag": "Plant based",
+      "storeId": "summits"
+    },
+    {
+      "id": "salad",
+      "name": "Green goddess salad",
+      "description": "Fresh greens, chickpeas & creamy herb dressing.",
+      "category": "Lunch",
+      "priceCents": 700,
+      "emoji": "🥗",
+      "color": "#e3f0e8",
+      "tag": "Fresh daily",
+      "storeId": "library"
+    },
+    {
+      "id": "coffee",
+      "name": "Cold brew coffee",
+      "description": "Slow steeped, smooth & ready for study time.",
+      "category": "Drinks",
+      "priceCents": 375,
+      "emoji": "☕",
+      "color": "#eee4dc",
+      "tag": "Study companion",
+      "storeId": "library"
+    },
+    {
+      "id": "lemonade",
+      "name": "Sparkling lemonade",
+      "description": "A bright, bubbly citrus pick-me-up.",
+      "category": "Drinks",
+      "priceCents": 300,
+      "emoji": "🍋",
+      "color": "#faf2cf",
+      "tag": "Keep it cool",
+      "storeId": "summits"
+    },
+    {
+      "id": "cookie",
+      "name": "Chocolate chunk cookie",
+      "description": "A soft center with generous chocolate chunks.",
+      "category": "Snacks",
+      "priceCents": 250,
+      "emoji": "🍪",
+      "color": "#f3e3d1",
+      "tag": "A little treat",
+      "storeId": "summits"
+    }
   ]
 }

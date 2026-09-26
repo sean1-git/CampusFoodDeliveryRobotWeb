@@ -84,6 +84,7 @@ export function Storefront({
                 <div className="product-category">{p.category}</div>
                 <h3>{p.name}</h3>
                 <p>{p.description}</p>
+                <p>Demo pickup: {p.storeId === "library" ? "Kolligian Library store" : "The Summits Marketplace"}</p>
                 <p>{p.stock === undefined ? "Connect to check stock" : p.stock === 0 ? "Sold out" : `${p.stock} left in demo stock`}</p>
                 <p>{inventoryFreshnessLabel(p)}</p>
                 <div className="product-bottom">

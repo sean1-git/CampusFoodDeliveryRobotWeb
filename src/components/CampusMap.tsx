@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { campusEdges, campusNodes, fastestRoute, meetingPoints, positionOnRoute, PREPARATION_MS } from "../../shared/campusRouting";
 import type { Order } from "../types";
 import "./CampusMap.css";
+import { GoogleDeliveryMap } from "./DeliveryMap";
+import { geoPosition } from "../../shared/campusGeo";
 
 function useSimulationClock() {
   const [now, setNow] = useState(Date.now);
@@ -67,79 +69,15 @@ export function OrderRoute({ order, online }: { order: Order; online: boolean })
   const arrived = now >= order.arrivesAt;
   const left = Math.max(0, Math.ceil((order.arrivesAt - now) / 1000));
   return <div className="order-route">
-    <CampusMap location={order.location} startedAt={departure} now={now} compact />
+    {order.deliveryRoute ? <GoogleDeliveryMap pin={order.deliveryRoute.destination} route={order.deliveryRoute}
+      robot={geoPosition(order.deliveryRoute, (now - departure) / 1000)} /> : <CampusMap location={order.location} startedAt={departure} now={now} compact />}
     <div className="order-route-info">
       <p className="eyebrow">SIMULATED DELIVERY</p>
       <h3>{arrived ? "Demo arrival complete" : preparing ? "Preparing for dispatch" : "Robot on its demo route"}</h3>
       <p>{arrived ? "The simulated robot reached your selected meeting point." : <>Time to demo arrival: <strong>{duration(left)}</strong></>}</p>
+      {order.deliveryRoute && <p>Pickup: {order.deliveryRoute.pickups?.map(p => p.name).join(" → ")} → confirmed pin at {order.deliveryRoute.destination.lat.toFixed(6)}, {order.deliveryRoute.destination.lng.toFixed(6)}. {order.deliveryRoute.meters} m on the demo network.</p>}
       <p>{preparing ? "20-second preparation, then movement along the highlighted path." : "Route follows estimated travel times in the illustrative network."}</p>
       {!online && <p className="map-notice">Offline: this is a local prediction of the demo timeline, not a live robot position.</p>}
     </div>
   </div>;
-}
-
-export function CampusDelivery({ location, setLocation, locked, online, setView }: {
-  location: string; setLocation: (location: string) => void; locked: boolean; online: boolean; setView: (view: "shop" | "orders" | "map") => void;
-}) {
-  const now = useSimulationClock();
-  const [run, setRun] = useState<{ location: string; startedAt: number } | null>(null);
-  const [locating, setLocating] = useState(false);
-  const [position, setPosition] = useState<{ latitude: number; longitude: number; accuracy: number; timestamp: number } | null>(null);
-  const [locationMessage, setLocationMessage] = useState("");
-  const [locationRequest, setLocationRequest] = useState(0);
-  // Location is opt-in, ephemeral and never included in checkout/API requests.
-  useEffect(() => {
-    if (!locationRequest) return;
-    let active = true;
-    if (!navigator.geolocation || !window.isSecureContext) {
-      setLocationMessage("Location is unavailable here. Choose a demo meeting point manually."); setLocating(false); return;
-    }
-    navigator.geolocation.getCurrentPosition((result) => {
-      if (!active) return;
-      setPosition({ latitude: result.coords.latitude, longitude: result.coords.longitude, accuracy: result.coords.accuracy, timestamp: result.timestamp });
-      setLocating(false);
-      setLocationMessage("Location received. This image has no GPS calibration, so select and confirm a demo meeting point below.");
-    }, (error) => {
-      if (!active) return;
-      setLocating(false);
-      setLocationMessage(error.code === 1 ? "Location permission was declined or blocked. You can still choose a meeting point." : "Could not get a fresh location. Try again or choose a meeting point manually.");
-    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
-    return () => { active = false; };
-  }, [locationRequest]);
-  const route = fastestRoute(location);
-  const currentRun = run?.location === location ? run : null;
-  const remaining = currentRun && route ? Math.max(0, Math.ceil(route.seconds - Math.max(0, now - currentRun.startedAt) / 1000)) : null;
-  return <section className="campus-delivery">
-    <div className="campus-heading"><div><p className="eyebrow">UC MERCED · CAMPUS DELIVERY</p><h1>Try the robot route.</h1><p>Choose a demo meeting point and watch the journey.</p></div><span className="campus-demo-badge">SIMULATION ONLY</span></div>
-    <div className="campus-workspace">
-      <CampusMap location={location} startedAt={currentRun?.startedAt ?? null} now={now} />
-      <div className="campus-controls">
-        <div className="campus-control-section">
-          <h2>Your meeting point</h2>
-          <p>Points A–C and the dispatch point are illustrative placements. They need confirmation on a detailed campus map.</p>
-          <label className="field-label" htmlFor="map-destination">Delivery destination</label>
-          <select id="map-destination" disabled={locked} value={location} onChange={(event) => { setLocation(event.target.value); setRun(null); }}>
-            {meetingPoints.map((point) => <option key={point.id} value={point.label}>{point.marker} · {point.label}</option>)}
-          </select>
-          {locked && <p className="map-notice">Your checkout has fixed this destination. Cancel the reservation to change it.</p>}
-          <button className="secondary" onClick={() => { setLocating(true); setLocationMessage(""); setPosition(null); setLocationRequest((value) => value + 1); }} disabled={locating}>{locating ? "Finding your location…" : "Use my location"}</button>
-          <p className="campus-privacy">Optional. Location stays in this browser and is cleared when you leave this view. No background tracking.</p>
-          <div role="status" aria-live="polite">
-            {locationMessage && <p className="map-notice">{locationMessage}</p>}
-            {position && <p className="campus-position">{position.latitude.toFixed(5)}, {position.longitude.toFixed(5)} · accuracy ±{Math.round(position.accuracy)} m<br />Captured {new Date(position.timestamp).toLocaleTimeString()}. Position is not plotted on this uncalibrated image.</p>}
-          </div>
-        </div>
-        <div className="campus-control-section">
-          <h2>Route preview</h2>
-          <div className="campus-route-metrics"><div><span>ESTIMATED DEMO TRAVEL</span><strong>{route ? duration(route.seconds) : "Unavailable"}</strong></div><div><span>DEMO ARRIVAL IN</span><strong>{remaining === null ? "—" : duration(remaining)}</strong></div></div>
-          <p>The highlighted route has the lowest total travel time in this demo network. Timings are simulated, not real-world estimates.</p>
-          <div className="campus-buttons"><button className="primary" disabled={!route || (remaining !== null && remaining > 0)} onClick={() => setRun({ location, startedAt: Date.now() })}>{remaining === 0 ? "Run again" : remaining !== null ? "Simulation running…" : "Start simulation"}</button><button className="secondary" disabled={!currentRun} onClick={() => setRun(null)}>Reset</button></div>
-          <p role="status" aria-live="polite">{remaining === 0 ? "Arrived at the demo meeting point." : currentRun ? "Robot is following the highlighted path." : "Preview only. Starting a simulation does not place an order."}</p>
-          {!online && <p className="map-notice">Offline demo · cached map and simulated movement remain available.</p>}
-        </div>
-        <div className="campus-legend"><span><i className="legend-route" /> Selected route</span><span><i className="legend-robot" /> Robot</span><span><i className="legend-depot" /> Demo dispatch</span></div>
-        <button className="secondary" onClick={() => setView("shop")}>Use this destination in the store →</button>
-      </div>
-    </div>
-  </section>;
 }

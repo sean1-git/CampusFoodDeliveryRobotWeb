@@ -31,6 +31,10 @@ export async function handleApi(request, env, now = Date.now()) {
       );
     }
     const url = new URL(request.url);
+    if (url.pathname === "/api/maps-config" && request.method === "GET") {
+      // A browser key is intentionally public; provider-side referrer and API restrictions apply.
+      return json({ apiKey: env.GOOGLE_MAPS_BROWSER_KEY || null });
+    }
     if (request.method !== "GET" && request.method !== "POST")
       return json({ error: "Method not allowed." }, 405, {
         Allow: "GET, POST",

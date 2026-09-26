@@ -34,3 +34,8 @@
 .order-route { display: grid; grid-template-columns: minmax(180px, 260px) 1fr; gap: 24px; padding-block: 20px; border-top: 1px solid #e7ecee; }
 .campus-map-compact svg { max-height: 300px; }.order-route-info { display: grid; align-content: center; gap: 12px; }
 @media (max-width: 760px) { .campus-workspace { grid-template-columns: 1fr; gap: 20px; }.campus-heading { flex-direction: column; }.campus-control-section { padding: 18px; }.order-route { grid-template-columns: 1fr; }.campus-map svg { max-height: 510px; }.campus-map-compact svg { max-height: 320px; }.header nav { gap: 16px; } }
+.campus-delivery { max-width: 1000px; margin: 20px auto; display: grid; gap: 18px; }
+.campus-delivery h1 { font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -.035em; }
+.campus-delivery p { line-height: 1.6; }
+.map-points { display: flex; flex-wrap: wrap; gap: 12px; }
+.campus-delivery .primary { max-width: 380px; }
