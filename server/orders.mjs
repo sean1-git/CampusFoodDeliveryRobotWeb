@@ -31,7 +31,7 @@ function orderCooldown(retryAt) {
     {
       code: "order_cooldown",
       retryAt,
-      error: "Multiple order requests detected. You can place only one robot order per hour. Please wait before placing another order.",
+      error: "Your robot is still completing a delivery. You can place another order as soon as it reaches your confirmed pin.",
     },
     409,
   );

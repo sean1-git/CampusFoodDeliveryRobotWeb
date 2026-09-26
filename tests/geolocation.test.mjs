@@ -58,6 +58,7 @@ test("API cannot reserve or charge without a confirmed supported pin; ignores fo
   assert.deepEqual(order.deliveryRoute.pickups.map(p => p.id), ["library"]);
   assert.ok(order.deliveryRoute.seconds > 1);
   assert.equal(order.arrivesAt, order.createdAt + 20000 + order.deliveryRoute.seconds * 1000);
+  assert.equal((await (await call("/api/session")).json()).nextOrderAt, order.arrivesAt);
   assert.equal((await call("/api/reservations", { ...body, destination: { ...destination, ...campusStops[0] } }, key)).status, 409);
   await call(`/api/reservations/${key}/confirm`, {}, key);
   assert.equal((await (await call("/api/session")).json()).balanceCents, 4250);

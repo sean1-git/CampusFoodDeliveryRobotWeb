@@ -24,6 +24,7 @@ export type Session = {
   accountId: string;
   balanceCents: number;
   nextOrderAt: number | null;
+  serverNow?: number;
   mode: string;
 };
 export type Order = {

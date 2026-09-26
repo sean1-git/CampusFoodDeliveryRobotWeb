@@ -35,6 +35,7 @@ export function useCampusStore() {
   const busy = useRef(false);
   const [booting, setBooting] = useState(true);
   const [clock, setClock] = useState(() => Date.now());
+  const [serverClockOffset, setServerClockOffset] = useState(0);
   const [lastApiSuccessAt, setLastApiSuccessAt] = useState<number | null>(() => {
     try { return Number(localStorage.getItem("campus-last-api-success")) || null; } catch { return null; }
   });
@@ -62,6 +63,7 @@ export function useCampusStore() {
         const replaced = sessionToken !== null && sessionToken !== user.csrf;
         sessionToken = user.csrf;
         setSession(user);
+        setServerClockOffset(user.serverNow ? user.serverNow - Date.now() : 0);
         setClock(Date.now());
         if (replaced) {
           setOrders([]);
@@ -209,7 +211,7 @@ export function useCampusStore() {
   const csrf = session?.csrf;
   const hasCheckout = !!reservation || !!pending;
   const orderCooldownMs = session?.nextOrderAt
-    ? Math.max(0, session.nextOrderAt - clock)
+    ? Math.max(0, session.nextOrderAt - clock - serverClockOffset)
     : 0;
   useEffect(() => {
     if (!online || !csrf) return;

@@ -17,9 +17,9 @@ export function OrderHistory({ orders, setView, online }: Props) {
           <h1>Your orders.</h1>
           <p>Follow your demo delivery, one step at a time.</p>
         </div>
-        <button className="secondary" onClick={() => setView("shop")}>
+        <md-filled-tonal-button onClick={() => setView("shop")}>
           Keep browsing →
-        </button>
+        </md-filled-tonal-button>
       </div>
       <p className="simulation-note">
         Demo timeline: 20 seconds to prepare, then a simulated trip along the

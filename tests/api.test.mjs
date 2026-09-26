@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { handleApi } from "../server/api.mjs";
 import { openDatabase } from "../server/local-db.mjs";
-import { ORDER_COOLDOWN_MS } from "../server/inventory.mjs";
+
 import { studentSession } from "./student-fixture.mjs";
 const origin = "https://campus.test";
 const basket = {
@@ -103,7 +103,7 @@ test("concurrent different orders cannot overspend demo funds", async (t) => {
     1650,
   );
 });
-test("a session can place only one order per hour", async (t) => {
+test("a session can order again at delivery arrival", async (t) => {
   const f = await fixture(t),
     u = await f.user();
   const first = await (await f.request(u, "/api/orders", "POST", basket)).json();
@@ -112,12 +112,12 @@ test("a session can place only one order per hour", async (t) => {
   assert.equal(blocked.status, 409);
   const blockedBody = await blocked.json();
   assert.equal(blockedBody.code, "order_cooldown");
-  assert.match(blockedBody.error, /multiple order requests/i);
-  assert.equal(blockedBody.retryAt, first.createdAt + ORDER_COOLDOWN_MS);
+  assert.match(blockedBody.error, /robot is still completing a delivery/i);
+  assert.equal(blockedBody.retryAt, first.arrivesAt);
   const allowedKey = crypto.randomUUID();
-  const allowed = await f.request(u, "/api/orders", "POST", basket, allowedKey, {}, first.createdAt + ORDER_COOLDOWN_MS);
+  const allowed = await f.request(u, "/api/orders", "POST", basket, allowedKey, {}, first.arrivesAt);
   assert.equal(allowed.status, 202);
-  const settled = await f.request(u, `/api/checkouts/${allowedKey}`, "GET", undefined, allowedKey, {}, first.createdAt + ORDER_COOLDOWN_MS + 100);
+  const settled = await f.request(u, `/api/checkouts/${allowedKey}`, "GET", undefined, allowedKey, {}, first.arrivesAt + 100);
   assert.equal(settled.status, 201);
 });
 test("order ownership enforced for reads and lists", async (t) => {

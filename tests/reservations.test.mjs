@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { openDatabase } from "../server/local-db.mjs";
 import { handleApi } from "../server/api.mjs";
-import { ensureInventory, availableInventory, HOLD_MS, ORDER_COOLDOWN_MS } from "../server/inventory.mjs";
+import { ensureInventory, availableInventory, HOLD_MS } from "../server/inventory.mjs";
 import { studentSession } from "./student-fixture.mjs";
 
 const origin = "https://campus.test";
@@ -135,7 +135,7 @@ test("legacy direct-purchase endpoint cannot bypass an account's active reservat
   assert.equal((await f.call(f.users[0], "/api/session")).body.balanceCents, 4250);
 });
 
-test("a completed order blocks another robot order for one hour", async (t) => {
+test("a purchased order blocks another order only until delivery", async (t) => {
   const f = await fixture(t);
   const first = await f.call(f.users[0], "/api/orders", { method: "POST", payload: body });
   assert.equal(first.status, 201);
@@ -145,7 +145,7 @@ test("a completed order blocks another robot order for one hour", async (t) => {
   });
   assert.equal(blocked.status, 409);
   assert.equal(blocked.body.code, "order_cooldown");
-  assert.equal(blocked.body.retryAt, first.body.createdAt + ORDER_COOLDOWN_MS);
+  assert.equal(blocked.body.retryAt, first.body.arrivesAt);
 });
 
 test("racing cancellation and confirmation produce only one terminal outcome", async (t) => {

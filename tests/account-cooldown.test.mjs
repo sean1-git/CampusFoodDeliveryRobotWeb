@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { openDatabase } from "../server/local-db.mjs";
 import { handleApi } from "../server/api.mjs";
 import { issueStudentSession, SESSION_AGE } from "../server/auth.mjs";
-import { ORDER_COOLDOWN_MS, availableInventory } from "../server/inventory.mjs";
+import { availableInventory } from "../server/inventory.mjs";
 import { studentSession } from "./student-fixture.mjs";
 
 const origin = "https://campus.test";
@@ -48,7 +48,7 @@ test("separate browsers and replacement cookies share the account, wallet, order
   for (const user of [b, replacement]) {
     const state = (await call(DB, user, "/api/session")).body;
     assert.equal(state.balanceCents, 4250);
-    assert.equal(state.nextOrderAt, first.body.createdAt + ORDER_COOLDOWN_MS);
+    assert.equal(state.nextOrderAt, first.body.arrivesAt);
     assert.equal(state.accountId, a.account_id);
     assert.equal((await call(DB, user, "/api/orders")).body.orders[0].id, first.body.id);
     assert.equal((await submit(DB, user)).body.code, "order_cooldown");
@@ -97,7 +97,7 @@ test("simultaneous new orders in separate sessions have one winner", async (t) =
 test("cooldown expires at the exact server deadline and ignores client identity/time/cooldown claims", async (t) => {
   const { DB, a, b, other } = await fixture(t);
   const first = await submit(DB, a);
-  const deadline = first.body.createdAt + ORDER_COOLDOWN_MS;
+  const deadline = first.body.arrivesAt;
   const denied = await call(DB, b, "/api/orders", {
     method: "POST", now: deadline - 1,
     body: { ...basket, accountId: other.account_id, cooldown_until: 0, current_time: deadline + 1 },
@@ -110,7 +110,7 @@ test("cooldown expires at the exact server deadline and ignores client identity/
   assert.equal(pending.status, 202);
   const accepted = await call(DB, b, `/api/checkouts/${key}`, { now: deadline + 100 });
   assert.equal(accepted.status, 201);
-  assert.equal((await call(DB, a, "/api/session")).body.nextOrderAt, accepted.body.createdAt + ORDER_COOLDOWN_MS);
+  assert.equal((await call(DB, a, "/api/session")).body.nextOrderAt, accepted.body.arrivesAt);
 });
 
 test("demo bootstrap does not authenticate client student claims or revive expired and legacy sessions", async (t) => {
@@ -174,7 +174,7 @@ test("cooldown survives database restart and rejects a competing write on anothe
     db.close(); db = openDatabase(file);
     assert.equal((await submit(db, b)).body.code, "order_cooldown");
     assert.equal((await availableInventory(db)).get("sandwich"), 19);
-    assert.equal((await call(db, b, "/api/session")).body.nextOrderAt, first.body.createdAt + ORDER_COOLDOWN_MS);
+    assert.equal((await call(db, b, "/api/session")).body.nextOrderAt, first.body.arrivesAt);
   } finally {
     second?.close(); db.close(); rmSync(directory, { recursive: true, force: true });
   }
@@ -212,7 +212,7 @@ test("replaying a cooldown-rejected queue entry never manufactures a new deadlin
     SELECT ?, session_id, account_id, ?, request_hash, items, subtotal, total, location, 0, kind, expires_at
     FROM checkout_queue WHERE request_key = ?`)
     .bind(crypto.randomUUID(), key, order.key).run();
-  const deadline = order.body.createdAt + ORDER_COOLDOWN_MS;
+  const deadline = order.body.arrivesAt;
   const rejected = await call(DB, b, `/api/checkouts/${key}`);
   assert.equal(rejected.body.code, "order_cooldown");
   assert.equal(rejected.body.retryAt, deadline);
@@ -235,7 +235,11 @@ test("account migration preserves legacy history and cooldown without authentica
     assert.equal(db.prepare("SELECT COUNT(*) n FROM orders").get().n, 1);
     const account = db.prepare("SELECT * FROM accounts").get();
     assert.equal(account.kind, "legacy");
-    assert.equal(account.cooldown_until, 1000 + ORDER_COOLDOWN_MS);
+    assert.equal(account.cooldown_until, 1000 + 3600000);
     assert.equal(db.prepare("SELECT account_id FROM orders").get().account_id, account.id);
+    for (const file of readdirSync(directory).filter(name => name.endsWith(".sql") && name > "0005_student_accounts.sql").sort()) {
+      db.exec(readFileSync(new URL(file, directory), "utf8"));
+    }
+    assert.equal(db.prepare("SELECT cooldown_until FROM accounts").get().cooldown_until, 52000);
   } finally { db.close(); }
 });

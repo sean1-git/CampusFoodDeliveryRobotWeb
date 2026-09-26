@@ -11,8 +11,9 @@ import { OrderHistory } from "./components/OrderHistory";
 import { DeliveryLocation } from "./components/DeliveryMap";
 import { Bag } from "./components/BagIcon";
 import { money } from "./lib/money";
-import { formatOrderCooldown } from "./lib/orderCooldown";
+import { DeliveryStatus } from "./components/DeliveryStatus";
 import "./App.css";
+import "./MaterialEnhancements.css";
 
 export default function App() {
   const store = useCampusStore();
@@ -68,12 +69,7 @@ export default function App() {
             </button>
           </div>
         )}
-        {orderCooldownMs > 0 && nextOrderAt && (
-          <div className="message warning" role="status" aria-live="polite">
-            <strong>Order cooldown active.</strong> Multiple order requests were detected, so only one robot order is allowed per hour.
-            {" "}Time remaining: <strong>{formatOrderCooldown(orderCooldownMs)}</strong>.
-          </div>
-        )}
+        {orderCooldownMs > 0 && nextOrderAt && <DeliveryStatus {...store} />}
         <div className={notice ? "message" : "sr-only"} role="status" aria-live="polite">
           {notice}
         </div>

@@ -80,15 +80,15 @@ Use the app's Install app control for browser-specific guidance. Browser support
 | `scripts/build-pwa.mjs` | Generates the production service worker |
 | `tests/` | API and PWA checks |
 
-Accounts, sessions, cooldowns, and demo orders are stored locally in `.data/campus-demo.sqlite`. Cart contents are stored in the browser. Each demo account starts with $50 in simulated funds. A demo delivery costs $1. Orders prepare for 20 seconds and then follow the selected campus route's simulated travel time. A demo account may place only one robot order per hour. Live robot pickup availability and real-world ETAs still require a robot integration.
+Accounts, sessions, cooldowns, and demo orders are stored locally in `.data/campus-demo.sqlite`. Cart contents are stored in the browser. Each demo account starts with $50 in simulated funds. A demo delivery costs $1. Orders prepare for 20 seconds and then follow the selected campus route's simulated travel time. A demo account may have one active robot delivery; ordering opens again at its simulated arrival time. Live robot pickup availability and real-world ETAs still require a robot integration.
 
 ### Shared login, checkout identity, and multiple tabs
 
 Every tab on the same origin sends the `campus_demo_session` HttpOnly, SameSite=Lax cookie (Secure on HTTPS and all production deployments). It contains only a random session ID, not a cooldown, balance, or student identity. `GET /api/session` creates a demo account and session atomically when no valid cookie exists; checkout endpoints never create sessions. Wallet totals, order history, checkout ownership, and UUID idempotency keys are account-scoped. A unique SQL partial index permits only one pending or held checkout per account across both reservation and direct-purchase endpoints.
 
-The anonymous demo wallet is shared by tabs using the same browser cookie, not across browsers or devices. Deleting cookies, using a private window, or waiting for the seven-day session expiry starts a new $50 wallet. The one-order-per-hour limit applies to that demo account, not a verified student identity. The existing stock checks, five-minute reservation expiry, CSRF checks, ownership validation and retry protection still apply.
+The anonymous demo wallet is shared by tabs using the same browser cookie, not across browsers or devices. Deleting cookies, using a private window, or waiting for the seven-day session expiry starts a new $50 wallet. The one-active-delivery limit applies to that demo account, not a verified student identity. The existing stock checks, five-minute reservation expiry, CSRF checks, ownership validation and retry protection still apply.
 
-The authoritative deadline is `accounts.cooldown_until`. Checkout transactions check the account deadline, funds, and stock; SQL triggers also reject orders during cooldown and advance the deadline by one hour on successful insertion. Order creation, inventory allocation, queue settlement, and cooldown advancement commit or roll back together. Duplicate retries return the original order without charging twice or extending the deadline. Failed or cancelled checkouts do not start a cooldown.
+The authoritative deadline is `accounts.cooldown_until`. Checkout transactions check the account deadline, funds, and stock; SQL triggers also reject orders during cooldown and set the deadline to the saved route’s arrival time on successful insertion. Order creation, inventory allocation, queue settlement, and cooldown advancement commit or roll back together. Duplicate retries return the original order without charging twice or extending the deadline. Failed or cancelled checkouts do not start a cooldown.
 
 Migration `0005_student_accounts.sql` preserves old anonymous orders under non-authenticated legacy accounts; it never assigns that history to a real student. It cancels surplus active legacy checkout rows to install the account-wide uniqueness constraint while retaining audit records. Local startup applies SQL migrations automatically. Other deployment targets must apply the SQL migrations, including the custom triggers, before running the new API.
 
@@ -170,3 +170,9 @@ These checks are not a full penetration test or approval to process real school 
 - Test real integration failures, permissions, refunds, and delivery handling in the authorized sandbox before launch.
 
 `INTEGRATION_MODE` defaults to `demo`; unsupported modes reject API requests. Setting it to `live` does not enable real integrations. Environment options are documented in `.env.example`; the current scripts read process environment variables and do not automatically load that file.
+
+## Delivery availability and Material components
+
+Migration 0009 replaces the old fixed hour with the order’s stored route duration plus 20 seconds of preparation. Existing account deadlines are recalculated, including legacy image-map routes. At the exact server arrival time another order is allowed; the database trigger still serializes competing purchases. This is simulated completion, not physical delivery confirmation. A real robot integration must use an authoritative delivery event.
+
+The UI uses bundled official @material/web filter chips, tonal buttons and progress indicators, with shared Material color roles, a delivery-status card, checkout steps and pickup chips. Components remain available with the cached PWA shell. Location selection and purchase confirmation still require a connection.

@@ -79,6 +79,11 @@ export function ShoppingBag({
         </div>
       ) : (
         <>
+          <ol className="checkout-steps" aria-label="Checkout progress">
+            <li className="complete"><span>✓</span>Bag</li>
+            <li className={destination || reservation?.body.destination ? "complete" : "current"}><span>2</span>Delivery pin</li>
+            <li className={checkout ? "current" : ""}><span>3</span>Confirm</li>
+          </ol>
           <div className="bag-lines">
             {lines.map((p) => (
               <div className="bag-line" key={p.id}>
@@ -151,6 +156,9 @@ export function ShoppingBag({
                 {" "}Limited stock goes to the first valid checkout received.
               </p>
               {reservation && (
+                <md-linear-progress value={secondsLeft / 300} aria-label="Reservation time remaining" />
+              )}
+              {reservation && (
                 <p className="checkout-note" role="status">
                   {reservation.phase === "held"
                     ? <>Items reserved · <strong>{Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}</strong> remaining. Unconfirmed checkout expires and all items are removed, even offline.</>
@@ -188,7 +196,7 @@ export function ShoppingBag({
               <p className="checkout-note">{destination ? <>Confirmed: {destination.lat.toFixed(6)}, {destination.lng.toFixed(6)}</> : "Choose and confirm a supported campus pin before we process your order."}</p>
               <p className="checkout-note">
                 {orderCooldownMs > 0 && nextOrderAt
-                  ? <>One robot order per hour. Multiple order requests are blocked. Time remaining: <strong>{formatOrderCooldown(orderCooldownMs)}</strong>; your next order is available at {new Date(nextOrderAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.</>
+                  ? <>Your next order unlocks when this delivery arrives. Estimated wait: <strong>{formatOrderCooldown(orderCooldownMs)}</strong> · arrival around {new Date(nextOrderAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.</>
                   : <>Enter checkout to hold your items for five minutes. Your wallet is charged only when you confirm.</>}
               </p>
               <button
@@ -196,7 +204,7 @@ export function ShoppingBag({
               disabled={!online || !session || submitting || orderCooldownMs > 0}
               onClick={() => void beginCheckout()}
             >
-              {orderCooldownMs > 0 ? "Order available later" : !destination ? "Choose delivery pin →" : <>Reserve & review order <span>→</span></>}
+              {orderCooldownMs > 0 ? "Robot completing delivery" : !destination ? "Choose delivery pin →" : <>Reserve & review order <span>→</span></>}
               </button>
             </>
           )}

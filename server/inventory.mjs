@@ -4,7 +4,6 @@ import { eligibleAccountSql } from "./auth.mjs";
 export const TICK_MS = 100;
 export const INITIAL_STOCK = 20;
 export const HOLD_MS = 5 * 60 * 1000;
-export const ORDER_COOLDOWN_MS = 60 * 60 * 1000;
 
 // Expired holds stop counting immediately, even if no cleanup request has run.
 const heldQuantity = `(SELECT COALESCE(SUM(json_extract(held.value, '$.quantity')), 0)

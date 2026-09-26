@@ -58,14 +58,15 @@ export function Storefront({
       </div>
       <div className="filters" aria-label="Product categories">
         {["All items", "Lunch", "Drinks", "Snacks"].map((label) => (
-          <md-assist-chip
+          <md-filter-chip
             key={label}
-            aria-pressed={filter === label ? "true" : undefined}
+            selected={filter === label}
+              label={label}
             className={filter === label ? "selected" : ""}
             onClick={() => setFilter(label)}
           >
             {label}
-          </md-assist-chip>
+          </md-filter-chip>
         ))}
       </div>
       <div className="products">
@@ -84,7 +85,7 @@ export function Storefront({
                 <div className="product-category">{p.category}</div>
                 <h3>{p.name}</h3>
                 <p>{p.description}</p>
-                <p>Demo pickup: {p.storeId === "library" ? "Kolligian Library store" : "The Summits Marketplace"}</p>
+                <p className="pickup-chip">Demo pickup: {p.storeId === "library" ? "Kolligian Library store" : "The Summits Marketplace"}</p>
                 <p>{p.stock === undefined ? "Connect to check stock" : p.stock === 0 ? "Sold out" : `${p.stock} left in demo stock`}</p>
                 <p>{inventoryFreshnessLabel(p)}</p>
                 <div className="product-bottom">
