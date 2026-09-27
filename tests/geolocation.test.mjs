@@ -14,11 +14,12 @@ test("all meeting corridors accept exact pins and reject off-corridor locations"
       const route = confirmedRoute(pin);
       assert.ok(route, `Rejected a pin on edge ${a}-${b}`);
       assert.deepEqual(route.destination, pin);
-      assert.equal(route.version, "ucm-simulation-v4");
+      assert.equal(route.version, "ucm-simulation-v5");
     }
   }
   assert.equal(routeToPin({ lat: 37.3638186, lng: -120.4259624 }), null);
-  assert.equal(routeToPin({ lat: 37.366402, lng: -120.423777 }), null);
+  assert.equal(deliveryArea({ lat: 37.366402, lng: -120.423777 }), "Northeast campus path");
+  assert.equal(routeToPin({ lat: 37.366402, lng: -120.422777 }), null);
 });
 test("geofence rejects missing, unconfirmed, malformed, outside-campus and off-path pins", () => {
   for (const p of [null, {}, { ...destination, confirmed: false }, { lat: NaN, lng: 0, confirmed: true },
@@ -80,7 +81,9 @@ test("API cannot reserve or charge without a confirmed supported pin; ignores fo
 test("meeting validation excludes simulated connectors and preserves Summit dispatch", () => {
   assert.equal(deliveryArea({lat: 37.3639, lng: -120.429155}), "Mammoth Lakes Road");
   assert.equal(deliveryArea({lat: 37.3627, lng: -120.427838}), "University Avenue");
-  assert.equal(deliveryArea(campusStops[3]), null);
+  // The newly supplied northeast corridor now includes the Bobcat pickup.
+  assert.equal(deliveryArea(campusStops[3]), "Northeast campus path");
+  assert.equal(deliveryArea({lat:37.363395,lng:-120.429}), null);
   const route = pickupRoute(destination, ["summits"]);
   assert.deepEqual(route.points[0], {lat: campusStops[0].lat, lng: campusStops[0].lng});
   assert.deepEqual(route.pickups.map(p => p.id), ["summits"]);
@@ -98,7 +101,7 @@ test("each store dispatches from its supplied pickup coordinate", () => {
 });
 
 test("new campus path is reachable from either pickup without opening nearby off-path areas", () => {
-  for (const stop of campusStops.slice(11)) {
+  for (const stop of campusStops.slice(11, 17)) {
     for (const id of ["summits", "library"]) {
       const route = pickupRoute({...stop, confirmed: true}, [id]);
       assert.ok(route);
@@ -107,4 +110,19 @@ test("new campus path is reachable from either pickup without opening nearby off
     }
   }
   assert.equal(deliveryArea({lat:37.363986,lng:-120.423903}), null);
+});
+
+test("new northwest and northeast segments support both pickups without joining the gap", () => {
+  for (const [a,b] of [[17,18],[19,20]]) {
+    for (const fraction of [0,.5,1]) {
+      const pin = {lat:campusStops[a].lat + fraction*(campusStops[b].lat-campusStops[a].lat),lng:campusStops[a].lng+fraction*(campusStops[b].lng-campusStops[a].lng),confirmed:true};
+      for (const store of ["summits","library"]) {
+        const route=pickupRoute(pin,[store]);
+        assert.ok(route);
+        assert.deepEqual(route.destination,pin);
+        assert.equal(route.pickups[0].id,store);
+      }
+    }
+  }
+  assert.equal(deliveryArea({lat:(campusStops[18].lat+campusStops[19].lat)/2,lng:(campusStops[18].lng+campusStops[19].lng)/2}),null);
 });

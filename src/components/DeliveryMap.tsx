@@ -96,7 +96,7 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
   return <section className="campus-delivery">
     <p className="eyebrow">UC MERCED · DELIVERY LOCATION</p>
     <h1>Where should we meet you?</h1>
-    <p>Tap along the highlighted sections of Scholars Lane, Mammoth Lakes Road, University Avenue, or the additional campus path. Drag your pin to your meeting point and confirm before checkout.</p>
+    <p>Tap along the highlighted sections of Scholars Lane, Mammoth Lakes Road, University Avenue, or the additional campus paths. Drag your pin to your meeting point and confirm before checkout.</p>
     <p>Would you like to share your location? This is optional. We read it once to help place your pin; only your confirmed meeting point is saved with checkout.</p>
     <button className="back" disabled={!online || locked || locating || !ready} onClick={locate}>{locating ? "Finding your location…" : "Use my location"}</button>
     <GoogleDeliveryMap pin={pin} route={route} onPick={locked ? undefined : pick} onReady={setReady} />
