@@ -43,7 +43,9 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
       });
       const marker = new google.maps.marker.AdvancedMarkerElement({ map, title: "Your exact delivery pin", gmpDraggable: !!handlers.current.onPick });
       markerRef.current = marker;
-      const content = document.createElement("span"); content.textContent = "🤖"; content.style.fontSize = "30px";
+      const content = document.createElement("img");
+      content.src = "/delivery-robot.svg"; content.alt = "Simulated delivery robot";
+      content.width = 60; content.height = 48;
       robotRef.current = new google.maps.marker.AdvancedMarkerElement({ map, title: "Simulated robot", content });
       lineRef.current = new google.maps.Polyline({ map, strokeColor: "#174b42", strokeWeight: 5, clickable: false });
       listeners.push(map.addListener("click", (event: google.maps.MapMouseEvent) => { if (event.latLng) handlers.current.onPick?.(event.latLng.toJSON()); }));

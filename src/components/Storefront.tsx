@@ -49,8 +49,7 @@ export function Storefront({
           <div className="robot-scene" aria-hidden="true">
             <span className="orbit orbit-one" /><span className="orbit orbit-two" />
             <span className="floating-snack snack-one">🥪</span><span className="floating-snack snack-two">☕</span>
-            <div className="buddy"><div className="buddy-face"><i /><i /></div><span className="buddy-badge">✦</span><div className="buddy-wheels"><i /><i /></div></div>
-            <span className="buddy-shadow" />
+            <img className="delivery-robot-hero" src="/delivery-robot.svg" alt="" />
           </div>
           <strong>Your little delivery buddy.</strong>
           <span>Robot delivery · simulated</span>

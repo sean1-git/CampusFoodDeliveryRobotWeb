@@ -95,13 +95,6 @@ md-linear-progress { display: block; width: 100%; --md-linear-progress-track-hei
 .robot-scene { position: relative; height: 130px; width: 170px; isolation: isolate; }
 .orbit { position: absolute; border: 1px dashed #8494c35c; border-radius: 50%; inset: 16px 0; transform: rotate(-22deg); }
 .orbit-two { inset: 0 27px; transform: rotate(32deg); }
-.buddy { position: absolute; left: 43px; top: 33px; width: 83px; height: 62px; background: linear-gradient(140deg,#fff,#d8e1fa); border: 2px solid white; border-radius: 24px 24px 19px 19px; box-shadow: 5px 8px 16px #3c4e7930; animation: buddy-float 4s ease-in-out infinite; }
-.buddy-face { position: absolute; top: 11px; left: 12px; right: 12px; height: 26px; background: #263956; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 15px; }
-.buddy-face i { width: 6px; height: 9px; background: #89eacb; border-radius: 8px; }
-.buddy-badge { position: absolute; bottom: 3px; left: 34px; color: #6476c3; font-size: 13px; }
-.buddy-wheels { position: absolute; bottom: -7px; left: 11px; right: 11px; display: flex; justify-content: space-between; z-index: -1; }
-.buddy-wheels i { background: #33415e; width: 15px; height: 19px; border-radius: 7px; }
-.buddy-shadow { position: absolute; top: 111px; left: 48px; width: 77px; height: 8px; border-radius: 50%; background: #43578220; filter: blur(3px); }
 .floating-snack { position: absolute; font-size: 26px; animation: buddy-float 5s ease-in-out infinite; }
 .snack-one { left: 0; top: 20px; transform: rotate(-15deg); }.snack-two { right: 0; top: 70px; animation-delay: -2s; }
 @keyframes buddy-float { 50% { translate: 0 -8px; rotate: 3deg; } }
@@ -137,3 +130,6 @@ md-linear-progress { display: block; width: 100%; --md-linear-progress-track-hei
 @media (prefers-reduced-motion: reduce) { .buddy,.floating-snack,.delivery-orb,.inventory-panel,.product,.product .add { animation: none; }.product:hover .food { transform: none; } }
 
 .pickup-timeline { list-style: none; display: grid; gap: 10px; padding: 0; margin: 0 0 22px; }.pickup-timeline li { display: flex; gap: 12px; align-items: center; padding: 12px 16px; background: #f1f4f9; border-radius: 16px; color: #556278; }.pickup-timeline li > span { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: #dfe5ef; }.pickup-timeline small { display: block; margin-top: 4px; font-size: .72rem; }.pickup-timeline strong { font-size: .85rem; }.pickup-timeline .complete { color: #25634d; background: #eaf5ed; }.pickup-timeline .current { color: #263f89; background: #e6ecff; box-shadow: inset 0 0 0 1px #b2c2f2; }.pickup-timeline .current > span { background: #3559c7; color: white; }
+
+.delivery-robot-hero { position: absolute; width: 150px; height: 119px; left: 10px; bottom: 0; filter: drop-shadow(0 5px 4px #24394618); animation: buddy-float 4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .delivery-robot-hero { animation: none; } }
