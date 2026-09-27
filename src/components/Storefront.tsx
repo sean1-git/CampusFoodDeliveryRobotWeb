@@ -36,7 +36,7 @@ export function Storefront({
     <section className="storefront" data-store={storeId}>
       <div className="intro">
         <div>
-          <p className="eyebrow"><span className="hero-spark" aria-hidden="true">✦</span> YOUR CAMPUS. YOUR CRAVINGS.</p>
+          <p className="eyebrow"><span className="hero-spark" aria-hidden="true">✦</span> UC MERCED. YOUR CAMPUS.</p>
           <h1>
             Small cravings.
             <br />
@@ -48,7 +48,7 @@ export function Storefront({
             from here.
           </p>
           <div className="hero-actions"><md-filled-tonal-button onClick={() => document.getElementById("store-inventory")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" })}>Explore the menu <span aria-hidden="true">↘</span></md-filled-tonal-button><button className="hero-map-link" onClick={() => setView("map")}>Choose a delivery pin ↗</button></div>
-          <div className="hero-facts"><span>02 campus stores</span><span>One bag. One delivery.</span></div>
+          <div className="hero-facts"><span>02 UC Merced stores</span><span>One bag. One delivery.</span></div>
         </div>
         <div className="delivery-note">
           <div className="robot-scene" aria-hidden="true">

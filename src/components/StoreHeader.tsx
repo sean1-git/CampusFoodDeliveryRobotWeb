@@ -4,7 +4,6 @@
  */
 import { money } from "../lib/money";
 import type { CampusStore } from "../hooks/useCampusStore";
-import { Bag } from "./BagIcon";
 import type { PwaControls } from "../hooks/usePwa";
 
 type Props = Pick<
@@ -26,14 +25,12 @@ export function StoreHeader({
         className="brand"
         href="#"
         onClick={() => setView("shop")}
-        aria-label="Campus Store home"
+        aria-label="UC Merced Campus Store home"
       >
-        <span className="brand-mark">
-          <Bag />
-        </span>
+        <img className="ucm-header-logo" src="/uc-merced-logo.png" alt="UC Merced" width="116" height="60" />
         <span>
           campus<span className="brand-light">store</span>
-          <small>YOUR CAMPUS, DELIVERED.</small>
+          <small>UC MERCED · DELIVERY DEMO</small>
         </span>
       </a>
       <nav aria-label="Main navigation">

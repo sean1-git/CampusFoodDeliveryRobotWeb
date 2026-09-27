@@ -1,13 +1,13 @@
 {
   "id": "/",
-  "name": "Campus Store Demo",
-  "short_name": "Campus Store",
-  "description": "A campus store prototype with simulated payments and robot delivery.",
+  "name": "UC Merced Campus Store Demo",
+  "short_name": "UCM Store",
+  "description": "A UC Merced campus store demo with simulated payments and robot delivery.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f8fafb",
-  "theme_color": "#193843",
+  "theme_color": "#142b52",
   "icons": [
     {
       "src": "/icon-192.png",
