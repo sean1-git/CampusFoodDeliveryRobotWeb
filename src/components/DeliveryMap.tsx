@@ -1,6 +1,6 @@
 /// <reference types="google.maps" />
 import { useEffect, useRef, useState } from "react";
-import { campusStops, pinEdges, deliveryArea, pickupRoute, pickupStores, GEO_PREPARATION_MS, CORRIDOR_METERS } from "../../shared/campusGeo";
+import { campusStops, pinEdges, pinCorridors, deliveryArea, pickupRoute, pickupStores, GEO_PREPARATION_MS, CORRIDOR_METERS } from "../../shared/campusGeo";
 import type { Coordinate, DeliveryPin, GeoRoute } from "../../shared/campusGeo";
 import type { CampusStore } from "../hooks/useCampusStore";
 import { loadGoogleMaps } from "../lib/googleMaps";
@@ -57,14 +57,21 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
   useEffect(() => {
     if (!ready) return;
     if (markerRef.current) { markerRef.current.position = pin ?? null; markerRef.current.gmpDraggable = !!onPick; }
-    if (pin) mapRef.current?.panTo(pin);
+  
     lineRef.current?.setPath(route?.points ?? []);
   }, [ready, pin, route, onPick]);
+  useEffect(() => { if (ready && pin) mapRef.current?.panTo(pin); }, [ready, pin]);
   useEffect(() => { if (ready && robotRef.current) robotRef.current.position = robot ?? null; }, [ready, robot]);
-  return <div>
+  function showCampus() {
+    const bounds = new google.maps.LatLngBounds();
+    campusStops.forEach(stop => bounds.extend(stop));
+    mapRef.current?.fitBounds(bounds, 40);
+  }
+  return <div className="friendly-map">
+    <div className="map-toolbar"><button className="back" disabled={!ready} onClick={showCampus}>Show campus</button><button className="back" disabled={!ready || !pin} onClick={() => { if (pin) { mapRef.current?.panTo(pin); mapRef.current?.setZoom(19); } }}>Find my pin</button></div>
     {error && <p className="map-notice" role="alert">{error}</p>}
     {!ready && !error && <p role="status">Loading Google Maps…</p>}
-    <div ref={element} style={{ height: 440, width: "100%", borderRadius: 16 }} aria-label="UC Merced delivery map" />
+    <div ref={element} className="google-map-canvas" aria-label="UC Merced delivery map" />
   </div>;
 }
 
@@ -77,7 +84,7 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
   const active = useRef(true);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   const valid = pin ? deliveryArea(pin) : null;
-  const route = pin && valid ? pickupRoute({ ...pin, confirmed: true }, lines.length ? lines.map(p => p.storeId) : ["library"]) : null;
+  const route = pin && valid && lines.length ? pickupRoute({ ...pin, confirmed: true }, lines.map(p => p.storeId)) : null;
   // Moving a pin invalidates prior consent; checkout needs an explicit reconfirmation.
   function pick(point: Coordinate) { if (locked) return; setPin(point); setDestination(null); setMessage(""); }
   function locate() {
@@ -98,20 +105,32 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
   return <section className="campus-delivery">
     <p className="eyebrow">UC MERCED · DELIVERY LOCATION</p>
     <h1>Where should we meet you?</h1>
-    <p>Tap along the highlighted sections of Scholars Lane, Mammoth Lakes Road, University Avenue, or the additional campus paths. Drag your pin to your meeting point and confirm before checkout.</p>
-    <p>Would you like to share your location? This is optional. We read it once to help place your pin; only your confirmed meeting point is saved with checkout.</p>
-    <button className="back" disabled={!online || locked || locating || !ready} onClick={locate}>{locating ? "Finding your location…" : "Use my location"}</button>
-    <GoogleDeliveryMap pin={pin} route={route} onPick={locked ? undefined : pick} onReady={setReady} />
-    <div className="map-points">
-      {campusStops.filter((_, index) => pinEdges.some(edge => edge.includes(index))).map(stop => <button className="back" key={stop.id} disabled={locked || !ready || !online} onClick={() => pick(stop)}>{stop.label}</button>)}
+    <p className="map-intro">Choose a meeting point on a teal path. Tap the map or pick a path below, then confirm your location.</p>
+    <div className="location-actions">
+      <md-filled-tonal-button disabled={!online || locked || locating || !ready} onClick={locate}>{locating ? "Finding you…" : "Use my location"}</md-filled-tonal-button>
+      <span>Optional · location is checked once, not continuously tracked.</span>
     </div>
-    <p className="map-notice">Highlighted lines mark customer meeting areas, with a {CORRIDOR_METERS} m pin tolerance. The darker route is a demo animation estimate. A physical robot will use its own safe routing and tracker; those systems are not connected yet. Store markers are simulated pickup points.</p>
-    {pin && <p>Pin: {pin.lat.toFixed(6)}, {pin.lng.toFixed(6)} · {valid ? "Within the demo delivery paths" : "Outside the supported paths — choose another point"}</p>}
-    {route && <p>Pickup: {route.pickups?.map(p => p.name).join(" → ")} → your pin. About {Math.max(1, Math.ceil((route.seconds + GEO_PREPARATION_MS / 1000) / 60))} minutes including preparation and pickup stops · {route.meters} m simulated travel.</p>}
-    {message && <p role="status">{message}</p>}
-    {!online && <p role="alert">Reconnect to load the map and confirm your delivery pin.</p>}
-    <button className="primary" disabled={!valid || !ready || !online || locked} onClick={confirm}>Confirm this delivery pin</button>
-    <button className="back" onClick={() => setView("shop")}>Back to bag</button>
-    <p>Demo pickup stores: {pickupStores.map(s => s.name).join(" and ")}. Travel uses Dijkstra on the simulation network, at 1 m/s; it does not predict traffic or real robot delays.</p>
+    <label className="path-picker">Start with a campus path
+      <select value="" disabled={locked || !ready || !online} onChange={event => { const stop = campusStops.find(s => s.id === event.target.value); if (stop) pick(stop); }}>
+        <option value="" disabled>Choose a path or meeting point…</option>
+        {pinCorridors.map(corridor => <optgroup key={corridor.name} label={corridor.name}>
+          {[...new Set(corridor.edges.flat())].map(index => <option key={campusStops[index].id} value={campusStops[index].id}>{campusStops[index].label}</option>)}
+        </optgroup>)}
+      </select>
+    </label>
+    <GoogleDeliveryMap pin={pin} route={route} onPick={locked || !online ? undefined : pick} onReady={setReady} />
+    <div className="map-legend"><span><i className="legend-path" />Available meeting paths</span><span><i className="legend-route" />Simulated delivery route</span><span>Store labels = pickup locations</span></div>
+    {message && <p className="map-notice" role="status">{message}</p>}
+    <div className={`pin-summary ${pin ? valid ? "pin-valid" : "pin-invalid" : ""}`} role="status" aria-live="polite">
+      <span className="pin-summary-icon" aria-hidden="true">{pin ? valid ? "✓" : "!" : "⌖"}</span>
+      <div><h2>{pin ? valid ? "Your meeting point is ready" : "Move your pin onto a teal path" : "Choose where to meet your robot"}</h2>
+      <p>{pin ? valid ? valid : "This spot is outside the delivery area. Tap closer to a highlighted line." : "Use the map, path selector, or your location to get started."}</p>
+      {pin && <small>{pin.lat.toFixed(6)}, {pin.lng.toFixed(6)} · drag the marker to adjust</small>}</div>
+    </div>
+    {route && lines.length > 0 && <div className="pin-trip"><strong>About {Math.max(1, Math.ceil((route.seconds + GEO_PREPARATION_MS / 1000) / 60))} min</strong><span>{route.pickups?.map(p => p.name).join(" → ")} → your pin<br /><small>Simulated estimate, including preparation and pickup stops</small></span></div>}
+    {!online && <p role="alert">You’re offline. Reconnect before confirming your meeting point.</p>}
+    {locked && <p role="status">Your checkout is in progress. Finish or cancel it before changing the meeting point.</p>}
+    <div className="pin-confirm-bar"><button className="back" onClick={() => setView("shop")}>Back to bag</button><button className="primary" disabled={!valid || !ready || !online || locked} onClick={confirm}>Confirm meeting point →</button></div>
+    <details className="map-help"><summary>How delivery locations work</summary><p>Pins must be within {CORRIDOR_METERS} m of a highlighted path. Your exact confirmed point is saved with checkout. Store markers and routes are for the demo; real robot navigation and tracking are not connected.</p></details>
   </section>;
 }
