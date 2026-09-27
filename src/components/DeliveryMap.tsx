@@ -82,21 +82,41 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
   const [locating, setLocating] = useState(false);
   const [message, setMessage] = useState("");
   const active = useRef(true);
-  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+  const locationRequest = useRef(0);
+  const useLocationButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => { active.current = true; return () => { active.current = false; locationRequest.current++; }; }, []);
+  useEffect(() => { if (locked) locationRequest.current++; }, [locked]);
   const valid = pin ? deliveryArea(pin) : null;
   const route = pin && valid && lines.length ? pickupRoute({ ...pin, confirmed: true }, lines.map(p => p.storeId)) : null;
   // Moving a pin invalidates prior consent; checkout needs an explicit reconfirmation.
-  function pick(point: Coordinate) { if (locked) return; setPin(point); setDestination(null); setMessage(""); }
+  function pick(point: Coordinate) {
+    if (locked) return;
+    locationRequest.current++;
+    setLocating(false); setPin(point); setDestination(null); setMessage("");
+  }
+  function removeLocation() {
+    if (locked) return;
+    // Browser geolocation cannot be cancelled; invalidate its callback so a late fix cannot restore the pin.
+    locationRequest.current++;
+    setLocating(false); setPin(null); setDestination(null);
+    setMessage("Location removed. Choose a new meeting point whenever you’re ready.");
+    useLocationButton.current?.focus();
+  }
   function locate() {
-    if (!navigator.geolocation || !window.isSecureContext) { setMessage("Location sharing is unavailable. Place your pin manually."); return; }
-    setLocating(true);
+    if (locked || locating || !online || !ready) return;
+    if (!navigator.geolocation || !window.isSecureContext) { setMessage("Location sharing is unavailable. Use the path selector or place your pin manually."); return; }
+    const requestId = ++locationRequest.current;
+    setLocating(true); setMessage("Waiting for your location. You can cancel at any time.");
     navigator.geolocation.getCurrentPosition(result => {
-      if (!active.current) return;
+      if (!active.current || requestId !== locationRequest.current) return;
       setLocating(false);
       const point = { lat: result.coords.latitude, lng: result.coords.longitude };
-      if (deliveryArea(point)) { pick(point); setMessage(`Location accuracy: about ${Math.round(result.coords.accuracy)} m. Check the pin and confirm where you will meet the robot.`); }
-      else setMessage(`Your reported location is outside the supported paths (accuracy about ${Math.round(result.coords.accuracy)} m). Place a pin on a highlighted path manually.`);
-    }, () => { if (active.current) { setLocating(false); setMessage("Location was unavailable or permission was declined. You can still place your pin manually."); } }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+      if (deliveryArea(point)) { pick(point); setMessage(`Location found, accurate to about ${Math.round(result.coords.accuracy)} meters. Check your pin, then confirm your meeting point.`); }
+      else setMessage("Your reported location is outside the delivery paths. Choose a supported path below instead.");
+    }, () => {
+      if (!active.current || requestId !== locationRequest.current) return;
+      setLocating(false); setMessage("Location was unavailable or permission was declined. Use the path selector below; location sharing is optional.");
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
   }
   function confirm() {
     if (!pin || !valid || !ready || !online || locked) return;
@@ -107,8 +127,9 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
     <h1>Where should we meet you?</h1>
     <p className="map-intro">Choose a meeting point on a teal path. Tap the map or pick a path below, then confirm your location.</p>
     <div className="location-actions">
-      <md-filled-tonal-button disabled={!online || locked || locating || !ready} onClick={locate}>{locating ? "Finding you…" : "Use my location"}</md-filled-tonal-button>
-      <span>Optional · location is checked once, not continuously tracked.</span>
+      <button type="button" className="location-use-button" ref={useLocationButton} disabled={!online || locked || locating || !ready} aria-describedby="location-privacy" onClick={locate}><span aria-hidden="true">⌖</span> {locating ? "Finding your location…" : "Use my location"}</button>
+      <button type="button" className="location-remove-button" disabled={locked || (!pin && !locating)} onClick={removeLocation}>{locating ? "Cancel location request" : "Remove location"}</button>
+      <span id="location-privacy">Optional · we check once, not continuously. Removing clears your current meeting point, not previous orders or your browser’s location permission.</span>
     </div>
     <label className="path-picker">Start with a campus path
       <select value="" disabled={locked || !ready || !online} onChange={event => { const stop = campusStops.find(s => s.id === event.target.value); if (stop) pick(stop); }}>
