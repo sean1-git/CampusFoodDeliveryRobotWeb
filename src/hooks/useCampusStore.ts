@@ -223,10 +223,13 @@ export function useCampusStore() {
     return () => clearInterval(timer);
   }, [online, csrf, activeOrders, hasCheckout, refresh, reconcileHold]);
 
+  const needsCountdown = !!reservation || !!session?.nextOrderAt;
   useEffect(() => {
+    // Idle browsing has no countdown: avoid re-rendering the whole app every second.
+    if (!needsCountdown) return;
     const tick = () => {
       const now = Date.now();
-      setClock(now);
+      if (document.visibilityState !== "hidden") setClock(now);
       const held = reservationRef.current;
       if (held && !busy.current && reservationExpired(held, now)) clearExpired();
     };
@@ -241,7 +244,7 @@ export function useCampusStore() {
       window.removeEventListener("pageshow", tick);
       document.removeEventListener("visibilitychange", tick);
     };
-  }, [clearExpired]);
+  }, [clearExpired, needsCountdown]);
 
   const lines = catalog.products.filter((p) => cart[p.id] > 0);
   const quantity = lines.reduce((sum, p) => sum + cart[p.id], 0);

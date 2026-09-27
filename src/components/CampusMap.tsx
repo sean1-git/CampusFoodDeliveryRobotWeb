@@ -5,15 +5,17 @@ import "./CampusMap.css";
 import { GoogleDeliveryMap } from "./DeliveryMap";
 import { geoPosition, deliverySteps } from "../../shared/campusGeo";
 
-function useSimulationClock() {
+function useSimulationClock(running: boolean) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    const tick = () => setNow(Date.now());
-    const timer = window.setInterval(tick, 100);
+    // Historical orders never need an animation timer; hidden tabs catch up on return.
+    if (!running) return;
+    const tick = () => { if (document.visibilityState !== "hidden") setNow(Date.now()); };
+    const timer = window.setInterval(tick, 250);
     window.addEventListener("pageshow", tick);
     document.addEventListener("visibilitychange", tick);
     return () => { clearInterval(timer); window.removeEventListener("pageshow", tick); document.removeEventListener("visibilitychange", tick); };
-  }, []);
+  }, [running]);
   return now;
 }
 
@@ -60,7 +62,7 @@ export function CampusMap({ location, startedAt, now, compact = false }: {
 }
 
 export function OrderRoute({ order, online }: { order: Order; online: boolean }) {
-  const clock = useSimulationClock();
+  const clock = useSimulationClock(order.status !== "delivered");
   // Measure elapsed time from receipt, using server time to avoid device-clock skew.
   const now = order.serverNow != null && order.receivedAt != null
     ? order.serverNow + Math.max(0, clock - order.receivedAt) : clock;
