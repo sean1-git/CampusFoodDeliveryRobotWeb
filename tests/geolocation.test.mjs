@@ -6,7 +6,7 @@ import { handleApi } from "../server/api.mjs";
 import { studentSession } from "./student-fixture.mjs";
 
 const destination = { lat: 37.362057, lng: -120.427846, confirmed: true };
-test("all three meeting corridors accept exact pins and reject off-corridor locations", () => {
+test("all meeting corridors accept exact pins and reject off-corridor locations", () => {
   for (const [a, b] of pinEdges) {
     for (const fraction of [0, 0.17, 0.5, 0.83, 1]) {
       const pin = { lat: campusStops[a].lat + fraction * (campusStops[b].lat - campusStops[a].lat),
@@ -14,7 +14,7 @@ test("all three meeting corridors accept exact pins and reject off-corridor loca
       const route = confirmedRoute(pin);
       assert.ok(route, `Rejected a pin on edge ${a}-${b}`);
       assert.deepEqual(route.destination, pin);
-      assert.equal(route.version, "ucm-simulation-v3");
+      assert.equal(route.version, "ucm-simulation-v4");
     }
   }
   assert.equal(routeToPin({ lat: 37.3638186, lng: -120.4259624 }), null);
@@ -95,4 +95,16 @@ test("each store dispatches from its supplied pickup coordinate", () => {
     assert.deepEqual(route.points[0], point);
     assert.deepEqual(route.pickups.map(store => store.id), [id]);
   }
+});
+
+test("new campus path is reachable from either pickup without opening nearby off-path areas", () => {
+  for (const stop of campusStops.slice(11)) {
+    for (const id of ["summits", "library"]) {
+      const route = pickupRoute({...stop, confirmed: true}, [id]);
+      assert.ok(route);
+      assert.deepEqual(route.destination, {lat:stop.lat,lng:stop.lng,confirmed:true});
+      assert.equal(route.pickups[0].id, id);
+    }
+  }
+  assert.equal(deliveryArea({lat:37.363986,lng:-120.423903}), null);
 });
