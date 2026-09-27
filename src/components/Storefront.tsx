@@ -11,7 +11,7 @@ import { stores, storeName } from "../../shared/stores";
 
 type Props = Pick<
   CampusStore,
-  "catalog" | "filter" | "setFilter" | "cart" | "locked" | "change" | "storeId" | "setStoreId"
+  "catalog" | "filter" | "setFilter" | "cart" | "locked" | "change" | "storeId" | "setStoreId" | "setView"
 >;
 export function Storefront({
   catalog,
@@ -22,12 +22,15 @@ export function Storefront({
   change,
   storeId,
   setStoreId,
+  setView,
 }: Props) {
+  const [sort, setSort] = useState("featured");
   const [search, setSearch] = useState("");
   const selectedStore = stores.find(store => store.id === storeId)!;
   const storeProducts = catalog.products.filter(product => product.storeId === storeId);
   const visibleProducts = storeProducts.filter(p => (filter === "All items" || p.category === filter)
-    && `${p.name} ${p.description} ${p.category}`.toLowerCase().includes(search.trim().toLowerCase()));
+    && `${p.name} ${p.description} ${p.category}`.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) => sort === "price-low" ? a.priceCents - b.priceCents : sort === "price-high" ? b.priceCents - a.priceCents : 0);
   function selectStore(id: string) { setStoreId(id); setFilter("All items"); setSearch(""); }
   return (
     <section className="storefront" data-store={storeId}>
@@ -44,6 +47,8 @@ export function Storefront({
             <br className="desktop-break" /> Pick your favorites. We’ll take it
             from here.
           </p>
+          <div className="hero-actions"><md-filled-tonal-button onClick={() => document.getElementById("store-inventory")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" })}>Explore the menu <span aria-hidden="true">↘</span></md-filled-tonal-button><button className="hero-map-link" onClick={() => setView("map")}>Choose a delivery pin ↗</button></div>
+          <div className="hero-facts"><span>02 campus stores</span><span>One bag. One delivery.</span></div>
         </div>
         <div className="delivery-note">
           <div className="robot-scene" aria-hidden="true">
@@ -75,7 +80,7 @@ export function Storefront({
         <span className="demo-inventory-badge">Simulated inventory</span>
       </div>
       <p className="store-inventory-note">Sample food and prices for testing. The school inventory API is not connected yet. You can mix items from both stores in one bag.</p>
-      <div className="menu-tools"><label className="menu-search"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search this store" placeholder="Find your next favorite…" value={search} onChange={event => setSearch(event.target.value)} /></label><span className="result-count" role="status">{visibleProducts.length} favorites to explore</span></div>
+      <div className="menu-tools"><label className="menu-search"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search this store" placeholder="Find your next favorite…" value={search} onChange={event => setSearch(event.target.value)} /></label><label className="menu-sort"><span className="sr-only">Sort menu</span><select value={sort} onChange={event => setSort(event.target.value)}><option value="featured">Featured</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select></label><span className="result-count" role="status">{visibleProducts.length} favorites to explore</span></div>
       <div className="filters" aria-label="Product categories">
         {["All items", "Lunch", "Drinks", "Snacks"].map((label) => (
           <md-filter-chip
@@ -94,6 +99,7 @@ export function Storefront({
             <article className={`product${cart[p.id] ? " product-in-bag" : ""}`} key={p.id} style={{ "--card-delay": `${index * 45}ms` } as CSSProperties}>
               <div className="product-art" style={{ backgroundColor: p.color }}>
                 <span className="product-tag">{p.tag}</span>
+                {cart[p.id] > 0 && <span className="in-bag-pill">✓ {cart[p.id]} in bag</span>}
                 <span className="food" role="img" aria-label={p.name}>
                   {p.emoji}
                 </span>
@@ -105,7 +111,7 @@ export function Storefront({
                 <p>{p.description}</p>
                 <p className="pickup-chip">Pickup: {storeName(p.storeId)}</p>
                 <p>{p.stock === undefined ? "Connect to check stock" : p.stock === 0 ? "Sold out" : `${p.stock} left in demo stock`}</p>
-                <p>{inventoryFreshnessLabel(p)}</p>
+                <details className="product-stock-details"><summary>Inventory details</summary><p>{inventoryFreshnessLabel(p)}</p></details>
                 <div className="product-bottom">
                   <strong>{money(p.priceCents)}</strong>
                   <button
