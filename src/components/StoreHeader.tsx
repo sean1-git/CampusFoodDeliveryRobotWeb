@@ -27,7 +27,7 @@ export function StoreHeader({
         onClick={() => setView("shop")}
         aria-label="UC Merced Campus Store home"
       >
-        <img className="ucm-header-logo" src="/uc-merced-logo.png" alt="UC Merced" width="116" height="60" />
+        <img className="app-header-logo" src="/app-logo.png" alt="Campus Store bobcat" width="60" height="60" />
         <span>
           campus<span className="brand-light">store</span>
           <small>UC MERCED · DELIVERY DEMO</small>

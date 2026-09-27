@@ -28,6 +28,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "drizzle-kit": "^0.31.11",
     "oxlint": "^1.81.0",
+    "sharp": "^0.35.5",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
   }
