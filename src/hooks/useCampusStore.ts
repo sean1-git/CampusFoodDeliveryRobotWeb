@@ -60,7 +60,7 @@ export function useCampusStore() {
     let sessionToken: string | null = null;
     return createRefreshQueue(async () => {
       try {
-        const user = await requestJson<Session>("/api/session");
+        const user = await requestJson<Session & { orders: Order[] }>("/api/session?include=orders");
         const replaced = sessionToken !== null && sessionToken !== user.csrf;
         sessionToken = user.csrf;
         setSession(user);
@@ -70,8 +70,7 @@ export function useCampusStore() {
           setOrders([]);
           publishTabEvent("session");
         }
-        const data = await requestJson<{ orders: Order[] }>("/api/orders");
-        setOrders(data.orders.map((order) => ({ ...order, receivedAt: Date.now() })));
+        setOrders(user.orders.map((order) => ({ ...order, receivedAt: Date.now() })));
       } catch (failure) {
         const problem = failure as ApiError;
         if (problem.status === 401) {
@@ -184,7 +183,7 @@ export function useCampusStore() {
     const wake = () => {
       if (!navigator.onLine || document.visibilityState === "hidden") return;
       syncStoredState();
-      void refresh().catch(() => {});
+      void refresh(false).catch(() => {});
       void reconcileHold();
     };
     window.addEventListener("focus", wake);
@@ -201,7 +200,7 @@ export function useCampusStore() {
     if (!online) { setBooting(false); return; }
     let active = true;
     setBooting(true);
-    void refresh().then(() => { if (active) { setError(""); void reconcileHold(); } })
+    void refresh(false).then(() => { if (active) { setError(""); void reconcileHold(); } })
       .catch((failure: ApiError) => { if (active) setError(failure.status === 401 ? failure.message
         : "The server is unavailable. Your saved inventory and bag remain available offline."); })
       .finally(() => { if (active) setBooting(false); });
@@ -217,7 +216,7 @@ export function useCampusStore() {
   useEffect(() => {
     if (!online || !csrf) return;
     const timer = setInterval(() => {
-      void refresh().catch(() => {});
+      void refresh(false).catch(() => {});
       void reconcileHold();
     }, activeOrders || hasCheckout ? 5000 : 30000);
     return () => clearInterval(timer);

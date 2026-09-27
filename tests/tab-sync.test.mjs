@@ -111,3 +111,19 @@ test("a failed account refresh can recover on the next event or wake", async () 
   fail = false;
   await refresh();
 });
+
+
+test("startup and wake share an in-flight read but an order invalidation still reruns it", async () => {
+  let release, calls = 0;
+  const refresh = createRefreshQueue(async () => {
+    if (++calls === 1) await new Promise(resolve => { release = resolve; });
+  });
+  const startup = refresh(false);
+  assert.equal(refresh(false), startup);
+  assert.equal(refresh(false), startup);
+  release();
+  await startup;
+  assert.equal(calls, 1);
+  await refresh();
+  assert.equal(calls, 2);
+});

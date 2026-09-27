@@ -3,7 +3,9 @@
 export function createRefreshQueue(read: () => Promise<void>) {
   let running: Promise<void> | null = null;
   let dirty = false;
-  return () => {
+  return (invalidate = true) => {
+    // Wake/startup reads can share work; mutations must refresh again afterward.
+    if (running && !invalidate) return running;
     dirty = true;
     if (!running) {
       running = (async () => {

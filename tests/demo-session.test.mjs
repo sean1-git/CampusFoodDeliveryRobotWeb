@@ -80,3 +80,24 @@ test("live mode and cross-site bootstraps cannot create demo accounts", async (t
   assert.equal((await call("/api/session", { headers: { origin: "https://attacker.test" } })).status, 403);
   assert.equal((await DB.prepare("SELECT COUNT(*) n FROM accounts").first()).n, 0);
 });
+
+
+test("combined bootstrap sets the cookie and only returns the visitor's own orders", async (t) => {
+  const { call, visitor } = setup(t);
+  const first = await call("/api/session?include=orders");
+  assert.equal(first.status, 200);
+  assert.match(first.headers.get("set-cookie"), /HttpOnly/);
+  assert.match(first.headers.get("cache-control"), /no-store/);
+  assert.deepEqual((await first.json()).orders, []);
+  const a = await visitor(), b = await visitor();
+  const purchase = await call("/api/orders", { user: a, method: "POST", body: basket });
+  assert.equal(purchase.status, 201);
+  const order = await purchase.json();
+  const now = Date.now();
+  const bundled = await (await call("/api/session?include=orders", { user: a, now })).json();
+  const separate = await (await call("/api/orders", { user: a, now })).json();
+  assert.deepEqual(bundled.orders, separate.orders);
+  assert.equal(bundled.orders[0].id, order.id);
+  assert.equal(bundled.balanceCents, 4525);
+  assert.deepEqual((await (await call("/api/session?include=orders", { user: b })).json()).orders, []);
+});

@@ -19,6 +19,12 @@ const validId = (value) =>
   typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
 // This handler deliberately supports demo mode only. Real integration adapters
 // must be implemented and reviewed before any actual charge or robot dispatch.
+async function accountOrders(db, accountId, now) {
+  const result = await db.prepare("SELECT * FROM orders WHERE account_id = ? ORDER BY created_at DESC LIMIT 50")
+    .bind(accountId).all();
+  return result.results.map((row) => publicOrder(row, now));
+}
+
 export async function handleApi(request, env, now = Date.now()) {
   try {
     if (env.INTEGRATION_MODE && env.INTEGRATION_MODE !== "demo") {
@@ -93,6 +99,9 @@ export async function handleApi(request, env, now = Date.now()) {
           nextOrderAt: account.cooldown_until > now ? account.cooldown_until : null,
           serverNow: now,
           mode: "demo",
+          // Bootstrap wallet and account-scoped orders without a second network round trip.
+          ...(url.searchParams.get("include") === "orders"
+            ? { orders: await accountOrders(db, session.account_id, now) } : {}),
         },
         200,
         sessionCookie ? { "Set-Cookie": sessionCookie } : {},
@@ -111,15 +120,7 @@ export async function handleApi(request, env, now = Date.now()) {
       return await checkoutResult(db, session.account_id, key, now);
     }
     if (url.pathname === "/api/orders" && request.method === "GET") {
-      const result = await db
-        .prepare(
-          "SELECT * FROM orders WHERE account_id = ? ORDER BY created_at DESC LIMIT 50",
-        )
-        .bind(session.account_id)
-        .all();
-      return json({
-        orders: result.results.map((row) => publicOrder(row, now)),
-      });
+      return json({ orders: await accountOrders(db, session.account_id, now) });
     }
     if (url.pathname.startsWith("/api/orders/") && request.method === "GET") {
       const id = url.pathname.slice("/api/orders/".length);
