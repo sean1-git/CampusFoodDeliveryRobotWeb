@@ -19,6 +19,7 @@ export function useInventory(online: boolean) {
     const task = (async () => {
       try {
         const catalog = await requestJson<Catalog>("/api/catalog");
+        // Record successful API receipt only; offline reads must not refresh this age.
         const next = { catalog, fetchedAt: Date.now() };
         latest.current = next;
         save(INVENTORY_CACHE_KEY, next);

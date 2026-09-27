@@ -13,6 +13,7 @@ import {
   TICK_MS,
   HOLD_MS,
 } from "./inventory.mjs";
+const productsById = new Map(catalog.products.map(product => [product.id, product]));
 const uuid = () => crypto.randomUUID();
 const validId = (value) =>
   typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
@@ -81,7 +82,7 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
   const seen = new Set();
   const items = [];
   for (const item of body.items) {
-    const product = catalog.products.find((p) => p.id === item?.id);
+    const product = productsById.get(item?.id);
     if (
       !product ||
       !Number.isInteger(item.quantity) ||
@@ -102,8 +103,10 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
       quantity: item.quantity,
     });
   }
+  // Canonical order makes retries with reordered cart lines share one fingerprint.
   items.sort((a, b) => a.id.localeCompare(b.id));
-  const route = pickupRoute(body.destination, items.map(item => catalog.products.find(p => p.id === item.id).storeId));
+  // Store ownership and route geometry come from the server, never client claims.
+  const route = pickupRoute(body.destination, items.map(item => productsById.get(item.id).storeId));
   if (!route) return json({ code: "delivery_pin_required", error: "Confirm an exact delivery pin on a highlighted UC Merced demo path before checkout. Pins outside the service area are not accepted." }, 400);
   const fingerprint = JSON.stringify({ items, destination: route.destination });
   const existing = await db

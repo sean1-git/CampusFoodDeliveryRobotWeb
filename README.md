@@ -100,7 +100,7 @@ The unused `issueStudentSession` helper remains available for future real school
 
 Completed orders invalidate other tabs' wallet, order history, and cooldown immediately. Detected session replacement also triggers a peer refresh; HTTP 401 clears the displayed wallet and history. Events have unique IDs to deduplicate delivery across both transports; receiving a cart or reservation snapshot does not echo it back. Account reads are serialized and repeated if an event arrives during an older request. Focus, page restoration, and visibility changes refresh account state, with a 30-second fallback poll for idle tabs (five seconds during active orders/checkouts). Broadcast events are limited to the same browser/origin; other browsers/devices refresh from the shared account API on focus or polling. Real school SSO is still pending, so cross-browser identities are currently exercised by server-side tests, not a working login screen.
 
-The UI follows Material 3 tokens and includes a small self-contained Material Web-compatible layer at `src/lib/materialWebFallback.ts` for assist chips and outlined controls. It keeps the app bundle self-contained until the official `@material/web` dependency can be installed.
+The UI follows Material 3 tokens and bundles the official `@material/web` components locally. Google Maps SDK loading is shared by the picker and tracking view through `src/lib/googleMaps.ts`.
 
 ## Shared stock and checkout ticks
 

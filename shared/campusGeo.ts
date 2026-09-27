@@ -26,6 +26,7 @@ export const pinCorridors = [
 export const pinEdges = pinCorridors.flatMap(c => c.edges);
 // These connectors are animation estimates only, not robot navigation instructions.
 export const geoEdges = [...pinEdges, [0, 1], [3, 6], [8, 2], [9, 4]];
+// Only customer corridors authorize a meeting point; animation connectors never do.
 export function deliveryArea(value: unknown) {
   if (!coordinate(value)) return null;
   const nearest = pinCorridors.flatMap(c => c.edges.map(([a, b]) => ({
@@ -56,22 +57,8 @@ function project(p: Coordinate, a: Coordinate, b: Coordinate) {
   const t = Math.max(0, Math.min(1, (((p.lng - a.lng) * scale) * x + (p.lat - a.lat) * y) / (x * x + y * y)));
   return { lat: a.lat + t * y, lng: a.lng + t * (b.lng - a.lng) };
 }
-// Dijkstra weights are expected travel seconds. The destination splits its nearest
-// edge; an exact selected pin is retained, never silently replaced by a landmark.
-function simulatedRoute(value: unknown, start = 0): GeoRoute | null {
-  if (!coordinate(value)) return null;
-  // Conservative service envelope, not a claim to represent the legal campus boundary.
-
-  const nearest = geoEdges.map(([a, b]) => {
-    const point = project(value, campusStops[a], campusStops[b]);
-    return { a, b, point, offset: distance(value, point) };
-  }).sort((a, b) => a.offset - b.offset)[0];
-
-  const nodes: Coordinate[] = [...campusStops, nearest.point, { lat: value.lat, lng: value.lng }];
-  const junction = campusStops.length, destination = junction + 1;
-  if (!Number.isInteger(start) || start < 0 || start >= campusStops.length) return null;
-  const edges: [number, number][] = geoEdges.filter(([a, b]) => a !== nearest.a || b !== nearest.b).map(([a, b]) => [a, b]);
-  edges.push([nearest.a, junction], [junction, nearest.b], [junction, destination]);
+// Dijkstra runs on the small demo graph. Costs remain unrounded until the final ETA.
+function shortestPath(nodes: Coordinate[], edges: number[][], start: number, destination: number) {
   const costs = nodes.map(() => Infinity), previous = nodes.map(() => -1), visited = new Set<number>();
   costs[start] = 0;
   while (visited.size < nodes.length) {
@@ -89,10 +76,30 @@ function simulatedRoute(value: unknown, start = 0): GeoRoute | null {
   }
   const indices = [destination];
   while (indices[0] !== start) { const prev = previous[indices[0]]; if (prev < 0) return null; indices.unshift(prev); }
+  return { indices, seconds: costs[destination] };
+}
+
+// Dijkstra weights are expected travel seconds. The destination splits its nearest
+// edge; an exact selected pin is retained, never silently replaced by a landmark.
+function simulatedRoute(value: unknown, start = 0): GeoRoute | null {
+  if (!coordinate(value)) return null;
+  const nearest = geoEdges.map(([a, b]) => {
+    const point = project(value, campusStops[a], campusStops[b]);
+    return { a, b, point, offset: distance(value, point) };
+  }).sort((a, b) => a.offset - b.offset)[0];
+
+  // Split the closest edge, then retain the exact pin as a final short segment.
+  const nodes: Coordinate[] = [...campusStops, nearest.point, { lat: value.lat, lng: value.lng }];
+  const junction = campusStops.length, destination = junction + 1;
+  if (!Number.isInteger(start) || start < 0 || start >= campusStops.length) return null;
+  const edges: [number, number][] = geoEdges.filter(([a, b]) => a !== nearest.a || b !== nearest.b).map(([a, b]) => [a, b]);
+  edges.push([nearest.a, junction], [junction, nearest.b], [junction, destination]);
+  const path = shortestPath(nodes, edges, start, destination);
+  if (!path) return null;
   const closest = [...campusStops].sort((a, b) => distance(value, a) - distance(value, b))[0];
   return { version: "ucm-simulation-v3", destination: { lat: value.lat, lng: value.lng, confirmed: true },
-    label: deliveryArea(value) ?? closest.label, points: indices.map(i => ({ lat: nodes[i].lat, lng: nodes[i].lng })),
-    meters: Math.round(costs[destination] * ROBOT_METERS_PER_SECOND), seconds: Math.ceil(costs[destination]) };
+    label: deliveryArea(value) ?? closest.label, points: path.indices.map(i => ({ lat: nodes[i].lat, lng: nodes[i].lng })),
+    meters: Math.round(path.seconds * ROBOT_METERS_PER_SECOND), seconds: Math.ceil(path.seconds) };
 }
 export function routeToPin(value: unknown, start = 0): GeoRoute | null {
   return deliveryArea(value) ? simulatedRoute(value, start) : null;
@@ -101,7 +108,8 @@ export function confirmedRoute(value: unknown): GeoRoute | null {
   return (value as DeliveryPin | null)?.confirmed === true ? routeToPin(value) : null;
 }
 export function pickupRoute(value: unknown, storeIds: string[]): GeoRoute | null {
-  if (!confirmedRoute(value) || !storeIds.length) return null;
+  // Validate once; each candidate route uses the same confirmed destination.
+  if ((value as DeliveryPin | null)?.confirmed !== true || !deliveryArea(value) || !storeIds.length) return null;
   const stores = [...new Set(storeIds)].map(id => pickupStores.find(s => s.id === id));
   if (stores.some(s => !s)) return null;
   // The demo starts at a pickup store. For a mixed bag, compare both pickup
@@ -109,7 +117,7 @@ export function pickupRoute(value: unknown, storeIds: string[]): GeoRoute | null
   const sequences = stores.length === 2 ? [stores, [...stores].reverse()] : [stores];
   const candidates = sequences.map(sequence => {
     const legs = sequence.slice(1).map((s, i) => simulatedRoute(campusStops[s!.node], sequence[i]!.node)!);
-    legs.push(routeToPin(value, sequence.at(-1)!.node)!);
+    legs.push(simulatedRoute(value, sequence.at(-1)!.node)!);
     const last = legs.at(-1)!;
     return { ...last, points: legs.flatMap((leg, i) => i ? leg.points.slice(1) : leg.points),
       meters: legs.reduce((sum, leg) => sum + leg.meters, 0), seconds: legs.reduce((sum, leg) => sum + leg.seconds, 0),

@@ -1,31 +1,10 @@
 /// <reference types="google.maps" />
 import { useEffect, useRef, useState } from "react";
-import { campusStops, pinEdges, deliveryArea, pickupRoute, pickupStores, routeToPin } from "../../shared/campusGeo";
+import { campusStops, pinEdges, deliveryArea, pickupRoute, pickupStores, GEO_PREPARATION_MS, CORRIDOR_METERS } from "../../shared/campusGeo";
 import type { Coordinate, DeliveryPin, GeoRoute } from "../../shared/campusGeo";
 import type { CampusStore } from "../hooks/useCampusStore";
+import { loadGoogleMaps } from "../lib/googleMaps";
 import "./CampusMap.css";
-
-let mapLoad: Promise<void> | undefined;
-function loadMaps() {
-  if (!mapLoad) mapLoad = (async () => {
-    const response = await fetch("/api/maps-config", { cache: "no-store" });
-    if (!response.ok) throw new Error("Map configuration could not be loaded.");
-    const { apiKey } = await response.json();
-    if (!apiKey) throw new Error("Google Maps is not configured. Delivery checkout is unavailable.");
-    await new Promise<void>((resolve, reject) => {
-      const script = document.createElement("script");
-      const globals = window as unknown as Record<string, unknown>;
-      const timer = window.setTimeout(() => reject(new Error("Google Maps timed out. Reload while online to retry.")), 20000);
-      globals.campusMapReady = () => { clearTimeout(timer); resolve(); };
-      globals.gm_authFailure = () => { clearTimeout(timer); window.dispatchEvent(new Event("campus-map-error")); reject(new Error("Google Maps authorization failed. Delivery checkout is unavailable.")); };
-      script.src = `https://maps.googleapis.com/maps/api/js?${new URLSearchParams({ key: apiKey, loading: "async", callback: "campusMapReady", libraries: "marker", v: "quarterly" })}`;
-      script.async = true;
-      script.onerror = () => { clearTimeout(timer); reject(new Error("Google Maps could not load. Reconnect and reload to retry.")); };
-      document.head.append(script);
-    });
-  })();
-  return mapLoad;
-}
 
 export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
   pin?: Coordinate | null; onPick?: (point: Coordinate) => void; route?: GeoRoute | null;
@@ -37,7 +16,8 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
   const robotRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
   const lineRef = useRef<google.maps.Polyline | null>(null);
   const handlers = useRef({ onPick, onReady });
-  handlers.current = { onPick, onReady };
+  // Update event callbacks without rebuilding the Google map on every render.
+  useEffect(() => { handlers.current = { onPick, onReady }; }, [onPick, onReady]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -45,7 +25,7 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
     const authError = () => { if (active) { setError("Google Maps authorization failed. Reload after map configuration is restored."); setReady(false); handlers.current.onReady?.(false); } };
     window.addEventListener("campus-map-error", authError);
     const listeners: google.maps.MapsEventListener[] = [];
-    void loadMaps().then(() => {
+    void loadGoogleMaps().then(() => {
       if (!active || !element.current) return;
       const map = new google.maps.Map(element.current, { center: { lat: 37.3635, lng: -120.4260 }, zoom: 17,
         mapId: "DEMO_MAP_ID", mapTypeControl: false, streetViewControl: false, clickableIcons: false,
@@ -96,6 +76,7 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   const valid = pin ? deliveryArea(pin) : null;
   const route = pin && valid ? pickupRoute({ ...pin, confirmed: true }, lines.length ? lines.map(p => p.storeId) : ["library"]) : null;
+  // Moving a pin invalidates prior consent; checkout needs an explicit reconfirmation.
   function pick(point: Coordinate) { if (locked) return; setPin(point); setDestination(null); setMessage(""); }
   function locate() {
     if (!navigator.geolocation || !window.isSecureContext) { setMessage("Location sharing is unavailable. Place your pin manually."); return; }
@@ -104,7 +85,7 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
       if (!active.current) return;
       setLocating(false);
       const point = { lat: result.coords.latitude, lng: result.coords.longitude };
-      if (routeToPin(point)) { pick(point); setMessage(`Location accuracy: about ${Math.round(result.coords.accuracy)} m. Check the pin and confirm where you will meet the robot.`); }
+      if (deliveryArea(point)) { pick(point); setMessage(`Location accuracy: about ${Math.round(result.coords.accuracy)} m. Check the pin and confirm where you will meet the robot.`); }
       else setMessage(`Your reported location is outside the supported paths (accuracy about ${Math.round(result.coords.accuracy)} m). Place a pin on a highlighted path manually.`);
     }, () => { if (active.current) { setLocating(false); setMessage("Location was unavailable or permission was declined. You can still place your pin manually."); } }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
   }
@@ -122,9 +103,9 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
     <div className="map-points">
       {campusStops.filter((_, index) => pinEdges.some(edge => edge.includes(index))).map(stop => <button className="back" key={stop.id} disabled={locked || !ready || !online} onClick={() => pick(stop)}>{stop.label}</button>)}
     </div>
-    <p className="map-notice">Highlighted lines mark customer meeting areas, with an 8 m pin tolerance. The darker route is a demo animation estimate. A physical robot will use its own safe routing and tracker; those systems are not connected yet. Store markers are simulated pickup points.</p>
+    <p className="map-notice">Highlighted lines mark customer meeting areas, with a {CORRIDOR_METERS} m pin tolerance. The darker route is a demo animation estimate. A physical robot will use its own safe routing and tracker; those systems are not connected yet. Store markers are simulated pickup points.</p>
     {pin && <p>Pin: {pin.lat.toFixed(6)}, {pin.lng.toFixed(6)} · {valid ? "Within the demo delivery paths" : "Outside the supported paths — choose another point"}</p>}
-    {route && <p>Pickup: {route.pickups?.map(p => p.name).join(" → ")} → your pin. About {Math.max(1, Math.ceil((route.seconds + 20) / 60))} minutes including preparation · {route.meters} m simulated travel.</p>}
+    {route && <p>Pickup: {route.pickups?.map(p => p.name).join(" → ")} → your pin. About {Math.max(1, Math.ceil((route.seconds + GEO_PREPARATION_MS / 1000) / 60))} minutes including preparation · {route.meters} m simulated travel.</p>}
     {message && <p role="status">{message}</p>}
     {!online && <p role="alert">Reconnect to load the map and confirm your delivery pin.</p>}
     <button className="primary" disabled={!valid || !ready || !online || locked} onClick={confirm}>Confirm this delivery pin</button>
