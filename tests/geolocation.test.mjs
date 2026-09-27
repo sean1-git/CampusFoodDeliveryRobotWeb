@@ -14,7 +14,7 @@ test("all meeting corridors accept exact pins and reject off-corridor locations"
       const route = confirmedRoute(pin);
       assert.ok(route, `Rejected a pin on edge ${a}-${b}`);
       assert.deepEqual(route.destination, pin);
-      assert.equal(route.version, "ucm-simulation-v5");
+      assert.equal(route.version, "ucm-simulation-v6");
     }
   }
   assert.equal(routeToPin({ lat: 37.3638186, lng: -120.4259624 }), null);
@@ -125,4 +125,19 @@ test("new northwest and northeast segments support both pickups without joining 
     }
   }
   assert.equal(deliveryArea({lat:(campusStops[18].lat+campusStops[19].lat)/2,lng:(campusStops[18].lng+campusStops[19].lng)/2}),null);
+});
+
+test("separate northeast link and east path accept pins from either store", () => {
+  for (const [a,b] of [[21,22],[23,24]]) {
+    for (const t of [0,.5,1]) {
+      const pin={lat:campusStops[a].lat+t*(campusStops[b].lat-campusStops[a].lat),lng:campusStops[a].lng+t*(campusStops[b].lng-campusStops[a].lng),confirmed:true};
+      for (const store of ["summits","library"]) {
+        const route=pickupRoute(pin,[store]);
+        assert.ok(route);
+        assert.deepEqual(route.destination,pin);
+        assert.deepEqual(route.pickups.map(p=>p.id),[store]);
+      }
+    }
+  }
+  assert.equal(deliveryArea({lat:37.364672,lng:-120.423443}),null);
 });

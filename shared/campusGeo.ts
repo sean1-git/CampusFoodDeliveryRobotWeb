@@ -27,18 +27,24 @@ export const campusStops = [
   { id: "northwest-path-end", label: "Northwest path · end", lat: 37.365574, lng: -120.426975 },
   { id: "northeast-path-start", label: "Northeast path · start", lat: 37.365833, lng: -120.424637 },
   { id: "northeast-path-end", label: "Northeast path · end", lat: 37.367130, lng: -120.422809 },
+  { id: "northeast-link-start", label: "Northeast link · start", lat: 37.365636, lng: -120.424880 },
+  { id: "northeast-link-end", label: "Northeast link · end", lat: 37.365822, lng: -120.424660 },
+  { id: "east-spur-start", label: "East path · start", lat: 37.364022, lng: -120.424149 },
+  { id: "east-spur-end", label: "East path · end", lat: 37.364672, lng: -120.423743 },
 ];
 export const pinCorridors = [
   { name: "Scholars Lane", edges: [[1, 2], [2, 4], [4, 5], [5, 6]] },
   { name: "Mammoth Lakes Road", edges: [[7, 8]] },
   { name: "University Avenue", edges: [[9, 10]] },
+  { name: "Northeast link", edges: [[21, 22]] },
+  { name: "East campus path", edges: [[23, 24]] },
   { name: "Northwest campus path", edges: [[17, 18]] },
   { name: "Northeast campus path", edges: [[19, 20]] },
   { name: "Campus path", edges: [[11, 12], [12, 13], [13, 14], [14, 15], [15, 16]] },
 ];
 export const pinEdges = pinCorridors.flatMap(c => c.edges);
 // These connectors are animation estimates only, not robot navigation instructions.
-export const geoEdges = [...pinEdges, [0, 1], [3, 6], [8, 2], [9, 4], [5, 11], [16, 10], [5, 17], [6, 19], [3, 19]];
+export const geoEdges = [...pinEdges, [0, 1], [3, 6], [8, 2], [9, 4], [5, 11], [16, 10], [5, 17], [6, 21], [22, 19], [3, 19], [14, 23]];
 // Only customer corridors authorize a meeting point; animation connectors never do.
 export function deliveryArea(value: unknown) {
   if (!coordinate(value)) return null;
@@ -110,7 +116,7 @@ function simulatedRoute(value: unknown, start = 0): GeoRoute | null {
   const path = shortestPath(nodes, edges, start, destination);
   if (!path) return null;
   const closest = [...campusStops].sort((a, b) => distance(value, a) - distance(value, b))[0];
-  return { version: "ucm-simulation-v5", destination: { lat: value.lat, lng: value.lng, confirmed: true },
+  return { version: "ucm-simulation-v6", destination: { lat: value.lat, lng: value.lng, confirmed: true },
     label: deliveryArea(value) ?? closest.label, points: path.indices.map(i => ({ lat: nodes[i].lat, lng: nodes[i].lng })),
     meters: Math.round(path.seconds * ROBOT_METERS_PER_SECOND), seconds: Math.ceil(path.seconds) };
 }
