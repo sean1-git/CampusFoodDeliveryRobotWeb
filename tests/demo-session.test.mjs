@@ -5,7 +5,7 @@ import { openDatabase } from "../server/local-db.mjs";
 import { DEMO_ISSUER, SESSION_AGE } from "../server/auth.mjs";
 
 const origin = "https://campus.test";
-const basket = { items: [{ id: "coffee", quantity: 1 }], location: "Library Walk", destination: { lat: 37.364864, lng: -120.425233, confirmed: true } };
+const basket = { items: [{ id: "coffee", quantity: 1 }], location: "Library Walk", destination: { lat: 37.365562, lng: -120.424938, confirmed: true } };
 function setup(t) {
   const DB = openDatabase();
   t.after(() => DB.close());

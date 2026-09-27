@@ -1,6 +1,6 @@
 /// <reference types="google.maps" />
 import { useEffect, useRef, useState } from "react";
-import { campusStops, geoEdges, pickupRoute, pickupStores, routeToPin } from "../../shared/campusGeo";
+import { campusStops, pinEdges, deliveryArea, pickupRoute, pickupStores, routeToPin } from "../../shared/campusGeo";
 import type { Coordinate, DeliveryPin, GeoRoute } from "../../shared/campusGeo";
 import type { CampusStore } from "../hooks/useCampusStore";
 import "./CampusMap.css";
@@ -54,9 +54,9 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
       const bounds = new google.maps.LatLngBounds();
       campusStops.forEach(stop => bounds.extend(stop));
       map.fitBounds(bounds, 40);
-      geoEdges.forEach(([a, b]) => new google.maps.Polyline({ map, path: [campusStops[a], campusStops[b]],
+      pinEdges.forEach(([a, b]) => new google.maps.Polyline({ map, path: [campusStops[a], campusStops[b]],
         strokeColor: "#19817b", strokeOpacity: 0.45, strokeWeight: 12, clickable: false }));
-      campusStops.forEach(stop => new google.maps.marker.AdvancedMarkerElement({ map, position: stop, title: `${stop.label} · demo anchor` }));
+
       pickupStores.forEach(store => {
         const tag = document.createElement("span"); tag.className = "map-store-marker"; tag.textContent = store.name;
         new google.maps.marker.AdvancedMarkerElement({ map, position: campusStops[store.node], content: tag, title: `${store.name} · simulated pickup` });
@@ -94,7 +94,7 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
   const [message, setMessage] = useState("");
   const active = useRef(true);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
-  const valid = pin ? routeToPin(pin) : null;
+  const valid = pin ? deliveryArea(pin) : null;
   const route = pin && valid ? pickupRoute({ ...pin, confirmed: true }, lines.length ? lines.map(p => p.storeId) : ["library"]) : null;
   function pick(point: Coordinate) { if (locked) return; setPin(point); setDestination(null); setMessage(""); }
   function locate() {
@@ -115,14 +115,14 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
   return <section className="campus-delivery">
     <p className="eyebrow">UC MERCED · DELIVERY LOCATION</p>
     <h1>Where should we meet you?</h1>
-    <p>Tap anywhere along the highlighted Scholars Lane walkway loop, or drag your pin along it. The enclosed interior is not a delivery area. Confirm your meeting point before checkout.</p>
+    <p>Tap along the highlighted sections of Scholars Lane, Mammoth Lakes Road, or University Avenue. Drag your pin to your meeting point and confirm before checkout.</p>
     <p>Would you like to share your location? This is optional. We read it once to help place your pin; only your confirmed meeting point is saved with checkout.</p>
     <button className="back" disabled={!online || locked || locating || !ready} onClick={locate}>{locating ? "Finding your location…" : "Use my location"}</button>
     <GoogleDeliveryMap pin={pin} route={route} onPick={locked ? undefined : pick} onReady={setReady} />
     <div className="map-points">
-      {campusStops.map(stop => <button className="back" key={stop.id} disabled={locked || !ready || !online} onClick={() => pick(stop)}>{stop.label}</button>)}
+      {campusStops.filter((_, index) => pinEdges.some(edge => edge.includes(index))).map(stop => <button className="back" key={stop.id} disabled={locked || !ready || !online} onClick={() => pick(stop)}>{stop.label}</button>)}
     </div>
-    <p className="map-notice">The loop follows your four coordinates and returns to the existing Scholars Lane anchor. Pins are accepted within 8 m of the line. Store markers are simulated pickup points, not verified entrances.</p>
+    <p className="map-notice">Highlighted lines mark customer meeting areas, with an 8 m pin tolerance. The darker route is a demo animation estimate. A physical robot will use its own safe routing and tracker; those systems are not connected yet. Store markers are simulated pickup points.</p>
     {pin && <p>Pin: {pin.lat.toFixed(6)}, {pin.lng.toFixed(6)} · {valid ? "Within the demo delivery paths" : "Outside the supported paths — choose another point"}</p>}
     {route && <p>Pickup: {route.pickups?.map(p => p.name).join(" → ")} → your pin. About {Math.max(1, Math.ceil((route.seconds + 20) / 60))} minutes including preparation · {route.meters} m simulated travel.</p>}
     {message && <p role="status">{message}</p>}

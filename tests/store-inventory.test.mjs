@@ -29,7 +29,7 @@ test("new demo products have shared stock and a seven-item mixed-store bag can c
   const selected = [...catalog.products].sort((a, b) => a.priceCents - b.priceCents).slice(0, 7);
   const key = crypto.randomUUID();
   let response = await call("/api/orders", { items: selected.map(p => ({ id: p.id, quantity: 1, storeId: "forged" })),
-    destination: { lat: 37.363970, lng: -120.424219, confirmed: true } }, key);
+    destination: { lat: 37.363311, lng: -120.427830, confirmed: true } }, key);
   for (let i = 0; response.status === 202 && i < 10; i++) { await new Promise(r => setTimeout(r, 100)); response = await call(`/api/checkouts/${key}`); }
   assert.equal(response.status, 201);
   const order = await response.json();

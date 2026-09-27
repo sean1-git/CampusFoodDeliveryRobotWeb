@@ -1,17 +1,38 @@
-// Simulation only: the user's ordered Scholars Lane walkway loop.
+// Customer pin corridors and a separate demo-only travel network.
 // Replace this versioned network with surveyed sidewalk geometry before real dispatch.
 import { storeName } from "./stores.ts";
 export type Coordinate = { lat: number; lng: number };
 export type DeliveryPin = Coordinate & { confirmed: true };
 export type GeoRoute = { version: string; destination: DeliveryPin; label: string; points: Coordinate[]; meters: number; seconds: number; pickups?: { id: string; name: string }[] };
+// Pickup anchors stay independent of the customer meeting corridors.
 export const campusStops = [
-  { id: "scholars", label: "Scholars Lane", lat: 37.363452, lng: -120.427793 },
-  { id: "south", label: "Loop point A · South", lat: 37.362167, lng: -120.426683 },
-  { id: "east", label: "Loop point B · East", lat: 37.363970, lng: -120.424219 },
-  { id: "north", label: "Loop point C · North", lat: 37.364864, lng: -120.425233 },
-  { id: "west", label: "Loop point D · West", lat: 37.364640, lng: -120.425884 },
+  { id: "summit-pickup", label: "Summit demo pickup", lat: 37.363452, lng: -120.427793 },
+  { id: "scholars-west", label: "Scholars Lane · west", lat: 37.363323, lng: -120.430034 },
+  { id: "scholars-bend", label: "Scholars Lane · bend", lat: 37.363322, lng: -120.428197 },
+  { id: "bobcat-pickup", label: "Bobcat demo pickup", lat: 37.364864, lng: -120.425233 },
+  { id: "scholars-turn", label: "Scholars Lane · turn", lat: 37.363441, lng: -120.427897 },
+  { id: "scholars-mid", label: "Scholars Lane · central", lat: 37.364781, lng: -120.426052 },
+  { id: "scholars-east", label: "Scholars Lane · east", lat: 37.365562, lng: -120.424938 },
+  { id: "mammoth-north", label: "Mammoth Lakes Road · north", lat: 37.364389, lng: -120.429165 },
+  { id: "mammoth-south", label: "Mammoth Lakes Road · south", lat: 37.363468, lng: -120.429144 },
+  { id: "university-north", label: "University Avenue · north", lat: 37.363311, lng: -120.427830 },
+  { id: "university-south", label: "University Avenue · south", lat: 37.362057, lng: -120.427846 },
 ];
-export const geoEdges = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 0]] as const;
+export const pinCorridors = [
+  { name: "Scholars Lane", edges: [[1, 2], [2, 4], [4, 5], [5, 6]] },
+  { name: "Mammoth Lakes Road", edges: [[7, 8]] },
+  { name: "University Avenue", edges: [[9, 10]] },
+];
+export const pinEdges = pinCorridors.flatMap(c => c.edges);
+// These connectors are animation estimates only, not robot navigation instructions.
+export const geoEdges = [...pinEdges, [0, 4], [3, 6], [8, 2], [9, 4]];
+export function deliveryArea(value: unknown) {
+  if (!coordinate(value)) return null;
+  const nearest = pinCorridors.flatMap(c => c.edges.map(([a, b]) => ({
+    name: c.name, offset: distance(value, project(value, campusStops[a], campusStops[b]))
+  }))).sort((a, b) => a.offset - b.offset)[0];
+  return nearest.offset <= CORRIDOR_METERS ? nearest.name : null;
+}
 export const GEO_PREPARATION_MS = 20000;
 export const CORRIDOR_METERS = 8;
 export const ROBOT_METERS_PER_SECOND = 1;
@@ -37,15 +58,15 @@ function project(p: Coordinate, a: Coordinate, b: Coordinate) {
 }
 // Dijkstra weights are expected travel seconds. The destination splits its nearest
 // edge; an exact selected pin is retained, never silently replaced by a landmark.
-export function routeToPin(value: unknown, start = 0): GeoRoute | null {
+function simulatedRoute(value: unknown, start = 0): GeoRoute | null {
   if (!coordinate(value)) return null;
   // Conservative service envelope, not a claim to represent the legal campus boundary.
-  if (value.lat < 37.3620 || value.lat > 37.3650 || value.lng < -120.4280 || value.lng > -120.4240) return null;
+
   const nearest = geoEdges.map(([a, b]) => {
     const point = project(value, campusStops[a], campusStops[b]);
     return { a, b, point, offset: distance(value, point) };
   }).sort((a, b) => a.offset - b.offset)[0];
-  if (nearest.offset > CORRIDOR_METERS) return null;
+
   const nodes: Coordinate[] = [...campusStops, nearest.point, { lat: value.lat, lng: value.lng }];
   const junction = campusStops.length, destination = junction + 1;
   if (!Number.isInteger(start) || start < 0 || start >= campusStops.length) return null;
@@ -69,9 +90,12 @@ export function routeToPin(value: unknown, start = 0): GeoRoute | null {
   const indices = [destination];
   while (indices[0] !== start) { const prev = previous[indices[0]]; if (prev < 0) return null; indices.unshift(prev); }
   const closest = [...campusStops].sort((a, b) => distance(value, a) - distance(value, b))[0];
-  return { version: "ucm-simulation-v2", destination: { lat: value.lat, lng: value.lng, confirmed: true },
-    label: closest.label, points: indices.map(i => ({ lat: nodes[i].lat, lng: nodes[i].lng })),
+  return { version: "ucm-simulation-v3", destination: { lat: value.lat, lng: value.lng, confirmed: true },
+    label: deliveryArea(value) ?? closest.label, points: indices.map(i => ({ lat: nodes[i].lat, lng: nodes[i].lng })),
     meters: Math.round(costs[destination] * ROBOT_METERS_PER_SECOND), seconds: Math.ceil(costs[destination]) };
+}
+export function routeToPin(value: unknown, start = 0): GeoRoute | null {
+  return deliveryArea(value) ? simulatedRoute(value, start) : null;
 }
 export function confirmedRoute(value: unknown): GeoRoute | null {
   return (value as DeliveryPin | null)?.confirmed === true ? routeToPin(value) : null;
@@ -84,7 +108,7 @@ export function pickupRoute(value: unknown, storeIds: string[]): GeoRoute | null
   // sequences using Dijkstra legs; the lower total travel time wins.
   const sequences = stores.length === 2 ? [stores, [...stores].reverse()] : [stores];
   const candidates = sequences.map(sequence => {
-    const legs = sequence.slice(1).map((s, i) => routeToPin(campusStops[s!.node], sequence[i]!.node)!);
+    const legs = sequence.slice(1).map((s, i) => simulatedRoute(campusStops[s!.node], sequence[i]!.node)!);
     legs.push(routeToPin(value, sequence.at(-1)!.node)!);
     const last = legs.at(-1)!;
     return { ...last, points: legs.flatMap((leg, i) => i ? leg.points.slice(1) : leg.points),

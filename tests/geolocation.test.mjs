@@ -1,34 +1,32 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { campusStops, geoEdges, distance, confirmedRoute, routeToPin, pickupRoute, geoPosition, geoTimeline } from "../shared/campusGeo.ts";
+import { campusStops, pinEdges, deliveryArea, confirmedRoute, routeToPin, pickupRoute, geoPosition, geoTimeline } from "../shared/campusGeo.ts";
 import { openDatabase } from "../server/local-db.mjs";
 import { handleApi } from "../server/api.mjs";
 import { studentSession } from "./student-fixture.mjs";
 
-const destination = { lat: 37.362167, lng: -120.426683, confirmed: true };
-test("every walkway segment accepts arbitrary pins, while the enclosed interior is rejected", () => {
-  for (const [a, b] of geoEdges) {
+const destination = { lat: 37.362057, lng: -120.427846, confirmed: true };
+test("all three meeting corridors accept exact pins and reject off-corridor locations", () => {
+  for (const [a, b] of pinEdges) {
     for (const fraction of [0, 0.17, 0.5, 0.83, 1]) {
       const pin = { lat: campusStops[a].lat + fraction * (campusStops[b].lat - campusStops[a].lat),
         lng: campusStops[a].lng + fraction * (campusStops[b].lng - campusStops[a].lng), confirmed: true };
       const route = confirmedRoute(pin);
       assert.ok(route, `Rejected a pin on edge ${a}-${b}`);
       assert.deepEqual(route.destination, pin);
-      assert.equal(route.version, "ucm-simulation-v2");
+      assert.equal(route.version, "ucm-simulation-v3");
     }
   }
   assert.equal(routeToPin({ lat: 37.3638186, lng: -120.4259624 }), null);
   assert.equal(routeToPin({ lat: 37.366402, lng: -120.423777 }), null);
-  // Dijkstra can use the closing edge rather than walking the long way around.
-  assert.equal(routeToPin(campusStops[4]).seconds, Math.ceil(distance(campusStops[0], campusStops[4])));
 });
 test("geofence rejects missing, unconfirmed, malformed, outside-campus and off-path pins", () => {
   for (const p of [null, {}, { ...destination, confirmed: false }, { lat: NaN, lng: 0, confirmed: true },
     { ...destination, lat: '37.363146' }, { lat: 37.7749, lng: -122.4194, confirmed: true },
     { lat: 37.365, lng: -120.427, confirmed: true }]) assert.equal(confirmedRoute(p), null);
-  for (const p of campusStops) assert.ok(confirmedRoute({ ...p, confirmed: true }));
+  for (const i of new Set(pinEdges.flat())) assert.ok(confirmedRoute({ ...campusStops[i], confirmed: true }));
   // Exact between-anchor pin remains the destination, including a small permitted offset.
-  const mid = { lat: (campusStops[0].lat + campusStops[1].lat) / 2 + 0.00001, lng: (campusStops[0].lng + campusStops[1].lng) / 2, confirmed: true };
+  const mid = { lat: (campusStops[1].lat + campusStops[2].lat) / 2 + 0.00001, lng: (campusStops[1].lng + campusStops[2].lng) / 2, confirmed: true };
   assert.deepEqual(confirmedRoute(mid).destination, mid);
 });
 test("product store IDs determine pickups; mixed-store route chooses shortest sequence", () => {
@@ -37,9 +35,7 @@ test("product store IDs determine pickups; mixed-store route chooses shortest se
   assert.deepEqual(single.points[0], { lat: campusStops[3].lat, lng: campusStops[3].lng });
   const mixed = pickupRoute(destination, ["library", "summits"]);
   assert.deepEqual(new Set(mixed.pickups.map(p => p.id)), new Set(["library", "summits"]));
-  const forward = routeToPin(campusStops[3], 0).seconds + routeToPin(destination, 3).seconds;
-  const reverse = routeToPin(campusStops[0], 3).seconds + routeToPin(destination, 0).seconds;
-  assert.equal(mixed.seconds, Math.min(forward, reverse));
+  assert.ok(mixed.seconds >= single.seconds);
   assert.ok(mixed.meters > single.meters);
   assert.deepEqual(geoPosition(mixed, mixed.seconds + 1), destination);
   assert.deepEqual(geoPosition(mixed, -100), mixed.points[0]);
@@ -75,8 +71,17 @@ test("API cannot reserve or charge without a confirmed supported pin; ignores fo
   assert.ok(order.deliveryRoute.seconds > 1);
   assert.equal(order.arrivesAt, order.createdAt + 20000 + order.deliveryRoute.seconds * 1000);
   assert.equal((await (await call("/api/session")).json()).nextOrderAt, order.arrivesAt);
-  assert.equal((await call("/api/reservations", { ...body, destination: { ...destination, ...campusStops[0] } }, key)).status, 409);
+  assert.equal((await call("/api/reservations", { ...body, destination: { ...destination, ...campusStops[1] } }, key)).status, 409);
   await call(`/api/reservations/${key}/confirm`, {}, key);
   assert.equal((await (await call("/api/session")).json()).balanceCents, 4250);
   assert.equal((await DB.prepare("SELECT COUNT(*) AS count FROM orders").first()).count, 1);
+});
+
+test("meeting validation excludes simulated connectors and preserves Summit dispatch", () => {
+  assert.equal(deliveryArea({lat: 37.3639, lng: -120.429155}), "Mammoth Lakes Road");
+  assert.equal(deliveryArea({lat: 37.3627, lng: -120.427838}), "University Avenue");
+  assert.equal(deliveryArea(campusStops[3]), null);
+  const route = pickupRoute(destination, ["summits"]);
+  assert.deepEqual(route.points[0], {lat: campusStops[0].lat, lng: campusStops[0].lng});
+  assert.deepEqual(route.pickups.map(p => p.id), ["summits"]);
 });

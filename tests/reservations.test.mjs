@@ -6,7 +6,7 @@ import { ensureInventory, availableInventory, HOLD_MS } from "../server/inventor
 import { studentSession } from "./student-fixture.mjs";
 
 const origin = "https://campus.test";
-const body = { items: [{ id: "sandwich", quantity: 1 }], location: "Library Walk", destination: { lat: 37.364864, lng: -120.425233, confirmed: true } };
+const body = { items: [{ id: "sandwich", quantity: 1 }], location: "Library Walk", destination: { lat: 37.365562, lng: -120.424938, confirmed: true } };
 async function fixture(t) {
   const DB = openDatabase();
   t.after(() => DB.close());
