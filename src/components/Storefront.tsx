@@ -2,6 +2,8 @@
  * Displays the sample menu and category filters.
  * Add buttons call the store hook to update bag quantities.
  */
+import { useState } from "react";
+import type { CSSProperties } from "react";
 import { money } from "../lib/money";
 import { inventoryFreshnessLabel } from "../lib/inventoryFreshness";
 import type { CampusStore } from "../hooks/useCampusStore";
@@ -21,18 +23,21 @@ export function Storefront({
   storeId,
   setStoreId,
 }: Props) {
+  const [search, setSearch] = useState("");
   const selectedStore = stores.find(store => store.id === storeId)!;
   const storeProducts = catalog.products.filter(product => product.storeId === storeId);
-  function selectStore(id: string) { setStoreId(id); setFilter("All items"); }
+  const visibleProducts = storeProducts.filter(p => (filter === "All items" || p.category === filter)
+    && `${p.name} ${p.description} ${p.category}`.toLowerCase().includes(search.trim().toLowerCase()));
+  function selectStore(id: string) { setStoreId(id); setFilter("All items"); setSearch(""); }
   return (
-    <section className="storefront">
+    <section className="storefront" data-store={storeId}>
       <div className="intro">
         <div>
-          <p className="eyebrow">THE CAMPUS EDIT</p>
+          <p className="eyebrow"><span className="hero-spark" aria-hidden="true">✦</span> YOUR CAMPUS. YOUR CRAVINGS.</p>
           <h1>
-            A good day starts
+            Small cravings.
             <br />
-            with a full bag.
+            Big campus energy.
           </h1>
           <p>
             Fresh bites, study fuel, and little pick-me-ups.
@@ -41,21 +46,15 @@ export function Storefront({
           </p>
         </div>
         <div className="delivery-note">
-          <span className="robot-icon" aria-hidden="true">
-            ▣
-          </span>
-          <strong>
-            Meet your
-            <br />
-            delivery buddy.
-          </strong>
-          <span>Robot delivery · demo</span>
-          <span className="availability-note">
-            Explore the campus map to preview a simulated delivery route.
-          </span>
-          <span className="fee">
-            {money(catalog.deliveryFeeCents)} delivery
-          </span>
+          <div className="robot-scene" aria-hidden="true">
+            <span className="orbit orbit-one" /><span className="orbit orbit-two" />
+            <span className="floating-snack snack-one">🥪</span><span className="floating-snack snack-two">☕</span>
+            <div className="buddy"><div className="buddy-face"><i /><i /></div><span className="buddy-badge">✦</span><div className="buddy-wheels"><i /><i /></div></div>
+            <span className="buddy-shadow" />
+          </div>
+          <strong>Your little delivery buddy.</strong>
+          <span>Robot delivery · simulated</span>
+          <span className="fee">{money(catalog.deliveryFeeCents)} delivery</span>
         </div>
       </div>
       <div className="store-tabs" role="tablist" aria-label="Campus stores">
@@ -71,12 +70,13 @@ export function Storefront({
           <span>{store.name}<small>{catalog.products.filter(p => p.storeId === store.id).length} simulated items</small></span>
         </button>)}
       </div>
-      <div id="store-inventory" role="tabpanel" aria-labelledby={`store-tab-${storeId}`}>
+      <div key={storeId} className="inventory-panel" id="store-inventory" role="tabpanel" aria-labelledby={`store-tab-${storeId}`}>
       <div className="section-heading">
         <div><h2>{selectedStore.name}</h2><p className="store-description">{selectedStore.description}</p></div>
         <span className="demo-inventory-badge">Simulated inventory</span>
       </div>
       <p className="store-inventory-note">Sample food and prices for testing. The school inventory API is not connected yet. You can mix items from both stores in one bag.</p>
+      <div className="menu-tools"><label className="menu-search"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search this store" placeholder="Find your next favorite…" value={search} onChange={event => setSearch(event.target.value)} /></label><span className="result-count" role="status">{visibleProducts.length} favorites to explore</span></div>
       <div className="filters" aria-label="Product categories">
         {["All items", "Lunch", "Drinks", "Snacks"].map((label) => (
           <md-filter-chip
@@ -91,10 +91,8 @@ export function Storefront({
         ))}
       </div>
       <div className="products">
-        {storeProducts
-          .filter((p) => filter === "All items" || p.category === filter)
-          .map((p) => (
-            <article className="product" key={p.id}>
+        {visibleProducts.map((p, index) => (
+            <article className={`product${cart[p.id] ? " product-in-bag" : ""}`} key={p.id} style={{ "--card-delay": `${index * 45}ms` } as CSSProperties}>
               <div className="product-art" style={{ backgroundColor: p.color }}>
                 <span className="product-tag">{p.tag}</span>
                 <span className="food" role="img" aria-label={p.name}>
@@ -124,6 +122,7 @@ export function Storefront({
             </article>
           ))}
       </div>
+      {visibleProducts.length === 0 && <div className="menu-empty"><span aria-hidden="true">⌕</span><h3>No bites found</h3><p>Try another search or category.</p><button className="back" onClick={() => { setSearch(""); setFilter("All items"); }}>Show all items</button></div>}
       </div>
       <p className="menu-note">
         A sample menu for exploring the experience. Product details and

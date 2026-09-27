@@ -75,7 +75,8 @@ export default function App() {
         <div className={notice ? "message" : "sr-only"} role="status" aria-live="polite">
           {notice}
         </div>
-        {view !== "map" && <div className="message" role="status">
+        {view !== "map" && <details className="inventory-disclosure">
+          <summary><span className={`connection-dot${online ? "" : " offline"}`} />{online ? "Online browsing" : "Offline browsing"} <span>Inventory & sync details</span></summary>
           <div>
             {store.inventoryFetchedAt
               ? <>Catalog last fetched by this browser: {new Date(store.inventoryFetchedAt).toLocaleString()}.</>
@@ -85,7 +86,7 @@ export default function App() {
             {store.inventoryUnavailable && " The latest refresh failed; showing your last saved snapshot."}
             {store.lastApiSuccessAt && <div>Last successful server contact: {new Date(store.lastApiSuccessAt).toLocaleString()}.</div>}
           </div>
-        </div>}
+        </details>}
         {view === "map" ? (
           <DeliveryLocation {...store} destination={store.reservation?.body.destination ?? store.pending?.body.destination ?? store.destination} />
         ) : view === "shop" ? (
