@@ -24,6 +24,7 @@ const DB = openDatabase(
 const root = resolve("dist/client");
 const types = {
   ".html": "text/html",
+  ".txt": "text/plain; charset=utf-8",
   ".js": "text/javascript",
   ".css": "text/css",
   ".json": "application/json",
