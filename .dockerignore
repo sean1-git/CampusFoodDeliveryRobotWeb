@@ -8,3 +8,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+android
+ios
+assets/native

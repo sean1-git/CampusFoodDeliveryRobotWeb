@@ -2,7 +2,7 @@
  * Registers the generated service worker in production for cached offline browsing.
  * Notifies usePwa when an update is waiting and reloads after the user activates it.
  */
-if (import.meta.env.PROD && "serviceWorker" in navigator) {
+if (import.meta.env.PROD && import.meta.env.MODE !== "native" && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js")

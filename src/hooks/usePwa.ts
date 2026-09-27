@@ -12,11 +12,12 @@ export function usePwa() {
   const [installEvent, setInstallEvent] = useState<InstallEvent | null>(null);
   const [installHelp, setInstallHelp] = useState(false);
   const [installed, setInstalled] = useState(
-    matchMedia("(display-mode: standalone)").matches,
+    import.meta.env.MODE === "native" || matchMedia("(display-mode: standalone)").matches,
   );
   const [update, setUpdate] = useState<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
+    if (import.meta.env.MODE === "native") return;
     const beforeInstall = (event: Event) => {
       event.preventDefault();
       setInstallEvent(event as InstallEvent);

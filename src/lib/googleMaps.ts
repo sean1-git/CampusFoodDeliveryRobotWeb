@@ -1,10 +1,9 @@
+import { requestJson } from "./api";
 // Share one SDK load across the picker and tracking map, including React remounts.
 let mapLoad: Promise<void> | undefined;
 export function loadGoogleMaps() {
   if (!mapLoad) mapLoad = (async () => {
-    const response = await fetch("/api/maps-config", { cache: "no-store" });
-    if (!response.ok) throw new Error("Map configuration could not be loaded.");
-    const { apiKey } = await response.json();
+    const { apiKey } = await requestJson<{ apiKey: string | null }>("/api/maps-config");
     if (!apiKey) throw new Error("Google Maps is not configured. Delivery checkout is unavailable.");
     await new Promise<void>((resolve, reject) => {
       const script = document.createElement("script");

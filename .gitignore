@@ -29,3 +29,13 @@ dist-ssr
 .env.*
 !.env.example
 .sites-runtime/
+
+# Native signing credentials, local SDK paths and generated output
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+android/local.properties
+android/key.properties
+ios/App/App/public/
+android/app/src/main/assets/public/

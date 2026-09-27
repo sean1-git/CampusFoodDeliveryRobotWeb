@@ -93,7 +93,7 @@ test("updates activate only on request and clean only this app cache", async () 
 
 
 test("first service-worker takeover avoids reload; later updates reload only once", () => {
-  const source = readFileSync("src/pwa.ts", "utf8").replace("import.meta.env.PROD", "true");
+  const source = readFileSync("src/pwa.ts", "utf8").replace("import.meta.env.PROD", "true").replace("import.meta.env.MODE", '"production"');
   for (const initiallyControlled of [false, true]) {
     let reloads = 0;
     const handlers = {};
@@ -108,4 +108,15 @@ test("first service-worker takeover avoids reload; later updates reload only onc
     handlers.controllerchange();
     assert.equal(reloads, 1);
   }
+});
+
+
+test("native builds never register the website service worker", () => {
+  const source = readFileSync("src/pwa.ts", "utf8").replace("import.meta.env.PROD", "true").replace("import.meta.env.MODE", '"native"');
+  let listeners = 0;
+  runInNewContext(source, {
+    navigator: { serviceWorker: { addEventListener() { listeners++; } } },
+    window: { addEventListener() { listeners++; } },
+  });
+  assert.equal(listeners, 0);
 });

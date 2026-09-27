@@ -1,4 +1,5 @@
 /// <reference types="google.maps" />
+import { currentLocation } from "../lib/location";
 import { useEffect, useRef, useState } from "react";
 import { campusStops, pinEdges, pinCorridors, deliveryArea, pickupRoute, pickupStores, GEO_PREPARATION_MS, CORRIDOR_METERS } from "../../shared/campusGeo";
 import type { Coordinate, DeliveryPin, GeoRoute } from "../../shared/campusGeo";
@@ -104,10 +105,9 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
   }
   function locate() {
     if (locked || locating || !online || !ready) return;
-    if (!navigator.geolocation || !window.isSecureContext) { setMessage("Location sharing is unavailable. Use the path selector or place your pin manually."); return; }
     const requestId = ++locationRequest.current;
     setLocating(true); setMessage("Waiting for your location. You can cancel at any time.");
-    navigator.geolocation.getCurrentPosition(result => {
+    void currentLocation().then(result => {
       if (!active.current || requestId !== locationRequest.current) return;
       setLocating(false);
       const point = { lat: result.coords.latitude, lng: result.coords.longitude };
@@ -116,7 +116,7 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
     }, () => {
       if (!active.current || requestId !== locationRequest.current) return;
       setLocating(false); setMessage("Location was unavailable or permission was declined. Use the path selector below; location sharing is optional.");
-    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+    });
   }
   function confirm() {
     if (!pin || !valid || !ready || !online || locked) return;
