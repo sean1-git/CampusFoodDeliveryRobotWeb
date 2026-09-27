@@ -3,12 +3,14 @@
  * sends /api requests to the shared handler, and opens the local SQLite database.
  */
 import { createServer } from "node:http";
-import { mkdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { mkdirSync, existsSync, statSync } from "node:fs";
 import { resolve, extname, sep } from "node:path";
 import { Readable } from "node:stream";
 import { handleApi, secureResponse } from "./api.mjs";
 import { openDatabase } from "./local-db.mjs";
 import { createRequestUrlResolver, InvalidRequestUrl } from "./request-url.mjs";
+
+import { staticBody } from "./static-assets.mjs";
 
 const requestUrl = createRequestUrlResolver(process.env);
 
@@ -71,7 +73,7 @@ const server = createServer(async (incoming, outgoing) => {
           : "no-cache",
       };
       response = existsSync(file)
-        ? new Response(readFileSync(file), { headers })
+        ? new Response(staticBody(file, incoming.headers["accept-encoding"], headers), { headers })
         : new Response("Run npm run build before npm start.", { status: 503 });
     }
     const secured = secureResponse(response);

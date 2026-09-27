@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 /**
  * Assembles the application from the store and PWA hooks and the page components.
  * Shows shared notices and switches between shopping and order history.
@@ -7,8 +8,8 @@ import { usePwa } from "./hooks/usePwa";
 import { StoreHeader } from "./components/StoreHeader";
 import { Storefront } from "./components/Storefront";
 import { ShoppingBag } from "./components/ShoppingBag";
-import { OrderHistory } from "./components/OrderHistory";
-import { DeliveryLocation } from "./components/DeliveryMap";
+const OrderHistory = lazy(() => import("./components/OrderHistory").then(module => ({ default: module.OrderHistory })));
+const DeliveryLocation = lazy(() => import("./components/DeliveryMap").then(module => ({ default: module.DeliveryLocation })));
 import { Bag } from "./components/BagIcon";
 import { money } from "./lib/money";
 import { DeliveryStatus } from "./components/DeliveryStatus";
@@ -87,6 +88,7 @@ export default function App() {
             {store.lastApiSuccessAt && <div>Last successful server contact: {new Date(store.lastApiSuccessAt).toLocaleString()}.</div>}
           </div>
         </details>}
+        <Suspense fallback={<p role="status">Loading your campus view…</p>}>
         {view === "map" ? (
           <DeliveryLocation {...store} destination={store.reservation?.body.destination ?? store.pending?.body.destination ?? store.destination} />
         ) : view === "shop" ? (
@@ -97,6 +99,7 @@ export default function App() {
         ) : (
           <OrderHistory {...store} />
         )}
+        </Suspense>
       </main>
       {view === "shop" && quantity > 0 && (
         <a className="mobile-bag" href="#bag">

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build": "tsc -b && node scripts/build-icons.mjs && vite build && node scripts/build-pwa.mjs && vite build --config vite.worker.config.ts",
+    "build": "tsc -b && node scripts/build-icons.mjs && vite build && node scripts/build-pwa.mjs && node scripts/build-compressed.mjs && vite build --config vite.worker.config.ts",
     "lint": "oxlint",
     "preview": "vite preview",
     "dev:api": "node --watch server/local.mjs",
