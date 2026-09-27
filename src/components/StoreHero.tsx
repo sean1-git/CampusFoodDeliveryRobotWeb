@@ -1,8 +1,9 @@
+import { memo } from "react";
 import type { CampusStore } from "../hooks/useCampusStore";
 import { money } from "../lib/money";
 
 // Keep the hero outside the menu/bag grid so both edges share the page gutters.
-export function StoreHero({ catalog, storeId, setView }: Pick<CampusStore, "catalog" | "storeId" | "setView">) {
+export const StoreHero = memo(function StoreHero({ catalog, storeId, setView }: Pick<CampusStore, "catalog" | "storeId" | "setView">) {
   return (
       <div className="intro" data-store={storeId}>
         <div>
@@ -32,4 +33,4 @@ export function StoreHero({ catalog, storeId, setView }: Pick<CampusStore, "cata
         </div>
       </div>
   );
-}
+});

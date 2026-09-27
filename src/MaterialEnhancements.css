@@ -174,3 +174,5 @@ md-linear-progress { display: block; width: 100%; --md-linear-progress-track-hei
 .intro > div:first-child { min-width: 0; }
 .intro .delivery-note { display: flex; flex-shrink: 0; }
 @media (max-width: 600px) { .intro { flex-direction: column; align-items: stretch; }.intro .delivery-note { align-self: center; width: 100%; max-width: 300px; } }
+
+.delivery-progress-fallback { display: block; width: 100%; height: 4px; margin: 16px 0; accent-color: #142b52; }

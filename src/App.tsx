@@ -94,9 +94,11 @@ export default function App() {
           <DeliveryLocation {...store} destination={store.reservation?.body.destination ?? store.pending?.body.destination ?? store.destination} />
         ) : view === "shop" ? (
           <>
-          <StoreHero {...store} />
+          <StoreHero catalog={store.catalog} storeId={store.storeId} setView={store.setView} />
           <div className="shop-layout">
-            <Storefront {...store} />
+            <Storefront catalog={store.catalog} filter={store.filter} setFilter={store.setFilter}
+              cart={store.cart} locked={store.locked} change={store.change}
+              storeId={store.storeId} setStoreId={store.setStoreId} />
             <ShoppingBag {...store} />
           </div>
           </>

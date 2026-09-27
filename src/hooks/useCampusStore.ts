@@ -253,13 +253,13 @@ export function useCampusStore() {
   const checkout = hasCheckout;
   const secondsLeft = reservation ? Math.min(300, Math.max(0, Math.ceil((reservation.expiresAt - clock - reservation.clockOffsetMs) / 1000))) : 0;
 
-  function change(product: Product, amount: number) {
+  const change = useCallback((product: Product, amount: number) => {
     if (locked) return;
     setCart((old) => ({ ...old, [product.id]: amount > 0
       ? Math.max(old[product.id] || 0, Math.min(20, product.stock ?? 20, (old[product.id] || 0) + amount))
       : Math.max(0, (old[product.id] || 0) + amount) }));
     setNotice(amount > 0 ? `${product.name} added to your bag.` : `${product.name} quantity updated.`);
-  }
+  }, [locked]);
   const headers = (key: string) => ({ "Content-Type": "application/json", "X-CSRF-Token": session!.csrf, "Idempotency-Key": key });
   async function waitForReply(result: CheckoutReply, key: string, confirm = false): Promise<CheckoutReply> {
     const deadline = Date.now() + 15000;

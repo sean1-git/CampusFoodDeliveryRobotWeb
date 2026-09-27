@@ -1,3 +1,4 @@
+import { DeliveryProgress } from "./DeliveryProgress";
 import type { CampusStore } from "../hooks/useCampusStore";
 import { deliverySteps } from "../../shared/campusGeo";
 import { formatOrderCooldown } from "../lib/orderCooldown";
@@ -16,7 +17,7 @@ export function DeliveryStatus({ orders, orderCooldownMs, setView, online }: Pic
       <p className="eyebrow">{online ? "DELIVERY IN PROGRESS" : "SAVED DELIVERY ESTIMATE"}</p>
       <h2>{stage ?? (order?.status === "preparing" ? "A little goodness is getting ready." : "Your campus delivery is on its way.")}</h2>
       <p>Ordering opens as soon as the simulated robot reaches your pin.</p>
-      <md-linear-progress value={progress} aria-label="Estimated delivery progress" />
+      <DeliveryProgress value={progress} label="Estimated delivery progress" />
     </div>
     <div className="delivery-countdown"><strong>{formatOrderCooldown(orderCooldownMs)}</strong><span>estimated remaining</span></div>
     <md-filled-tonal-button onClick={() => setView("orders")}>Track delivery <span aria-hidden="true">↗</span></md-filled-tonal-button>

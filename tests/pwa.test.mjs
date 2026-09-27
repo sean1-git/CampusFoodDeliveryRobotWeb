@@ -90,3 +90,22 @@ test("updates activate only on request and clean only this app cache", async () 
   await activation;
   assert.deepEqual(sw.removed, ["campus-shell-old"]);
 });
+
+
+test("first service-worker takeover avoids reload; later updates reload only once", () => {
+  const source = readFileSync("src/pwa.ts", "utf8").replace("import.meta.env.PROD", "true");
+  for (const initiallyControlled of [false, true]) {
+    let reloads = 0;
+    const handlers = {};
+    runInNewContext(source, {
+      navigator: { serviceWorker: { controller: initiallyControlled ? {} : null,
+        addEventListener: (name, fn) => { handlers[name] = fn; } } },
+      window: { addEventListener() {}, location: { reload() { reloads++; } } },
+    });
+    handlers.controllerchange();
+    assert.equal(reloads, initiallyControlled ? 1 : 0);
+    handlers.controllerchange();
+    handlers.controllerchange();
+    assert.equal(reloads, 1);
+  }
+});

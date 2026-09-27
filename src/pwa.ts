@@ -21,8 +21,11 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
       })
       .catch(() => {});
   });
+  // First install can take control without downloading and rendering the page twice.
+  let hadController = !!navigator.serviceWorker.controller;
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController) { hadController = true; return; }
     if (!refreshing) {
       refreshing = true;
       window.location.reload();

@@ -1,3 +1,4 @@
+import { DeliveryProgress } from "./DeliveryProgress";
 /**
  * Displays bag quantities, estimated totals, and the delivery-location form.
  * Checkout calls the store hook; the server validates prices and demo funds.
@@ -158,7 +159,7 @@ export function ShoppingBag({
                 {" "}Limited stock goes to the first valid checkout received.
               </p>
               {reservation && (
-                <md-linear-progress value={secondsLeft / 300} aria-label="Reservation time remaining" />
+                <DeliveryProgress value={secondsLeft / 300} label="Reservation time remaining" />
               )}
               {reservation && (
                 <p className="checkout-note" role="status">
