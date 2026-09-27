@@ -2,7 +2,7 @@
 
 Food delivery prototype for campus shopping and robot delivery.
 
-Hosted Site: [UCM Campus Store](https://ucm-campus-store.seanlee5697.chatgpt.site).
+I built the Campus Store project to reduce the amount of time students spend on repetitive tasks like checking what products are available or making unnecessary trips to the store. By putting product and inventory information in one accessible platform, students can quickly see what is available with the touch of a button, allowing them to spend less time worrying about store availability and more time on school and other priorities.
 
 A React + TypeScript campus-store prototype with a Node/SQLite demo API. All products, funds, and robot delivery statuses are simulated. It does not connect to the school or dispatch robots.
 
