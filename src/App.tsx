@@ -6,6 +6,7 @@ import { lazy, Suspense } from "react";
 import { useCampusStore } from "./hooks/useCampusStore";
 import { usePwa } from "./hooks/usePwa";
 import { StoreHeader } from "./components/StoreHeader";
+import { StoreHero } from "./components/StoreHero";
 import { Storefront } from "./components/Storefront";
 import { ShoppingBag } from "./components/ShoppingBag";
 const OrderHistory = lazy(() => import("./components/OrderHistory").then(module => ({ default: module.OrderHistory })));
@@ -92,10 +93,13 @@ export default function App() {
         {view === "map" ? (
           <DeliveryLocation {...store} destination={store.reservation?.body.destination ?? store.pending?.body.destination ?? store.destination} />
         ) : view === "shop" ? (
+          <>
+          <StoreHero {...store} />
           <div className="shop-layout">
             <Storefront {...store} />
             <ShoppingBag {...store} />
           </div>
+          </>
         ) : (
           <OrderHistory {...store} />
         )}

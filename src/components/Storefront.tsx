@@ -11,7 +11,7 @@ import { stores, storeName } from "../../shared/stores";
 
 type Props = Pick<
   CampusStore,
-  "catalog" | "filter" | "setFilter" | "cart" | "locked" | "change" | "storeId" | "setStoreId" | "setView"
+  "catalog" | "filter" | "setFilter" | "cart" | "locked" | "change" | "storeId" | "setStoreId"
 >;
 export function Storefront({
   catalog,
@@ -22,7 +22,6 @@ export function Storefront({
   change,
   storeId,
   setStoreId,
-  setView,
 }: Props) {
   const [sort, setSort] = useState("featured");
   const [search, setSearch] = useState("");
@@ -34,33 +33,6 @@ export function Storefront({
   function selectStore(id: string) { setStoreId(id); setFilter("All items"); setSearch(""); }
   return (
     <section className="storefront" data-store={storeId}>
-      <div className="intro">
-        <div>
-          <p className="eyebrow"><span className="hero-spark" aria-hidden="true">✦</span> UC MERCED. YOUR CAMPUS.</p>
-          <h1>
-            Small cravings.
-            <br />
-            Big campus energy.
-          </h1>
-          <p>
-            Fresh bites, study fuel, and little pick-me-ups.
-            <br className="desktop-break" /> Pick your favorites. We’ll take it
-            from here.
-          </p>
-          <div className="hero-actions"><md-filled-tonal-button onClick={() => document.getElementById("store-inventory")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" })}>Explore the menu <span aria-hidden="true">↘</span></md-filled-tonal-button><button className="hero-map-link" onClick={() => setView("map")}>Choose a delivery pin ↗</button></div>
-          <div className="hero-facts"><span>02 UC Merced stores</span><span>One bag. One delivery.</span></div>
-        </div>
-        <div className="delivery-note">
-          <div className="robot-scene" aria-hidden="true">
-            <span className="orbit orbit-one" /><span className="orbit orbit-two" />
-            <span className="floating-snack snack-one">🥪</span><span className="floating-snack snack-two">☕</span>
-            <img className="delivery-robot-hero" src="/delivery-robot.svg" alt="" />
-          </div>
-          <strong>Your little delivery buddy.</strong>
-          <span>Robot delivery · simulated</span>
-          <span className="fee">{money(catalog.deliveryFeeCents)} delivery</span>
-        </div>
-      </div>
       <div className="store-tabs" role="tablist" aria-label="Campus stores">
         {stores.map((store, index) => <button key={store.id} role="tab" id={`store-tab-${store.id}`}
           aria-selected={storeId === store.id} aria-controls="store-inventory" tabIndex={storeId === store.id ? 0 : -1}
