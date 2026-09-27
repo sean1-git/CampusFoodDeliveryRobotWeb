@@ -7,7 +7,6 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import "@material/web/chips/filter-chip.js";
 import "@material/web/button/filled-tonal-button.js";
-import "@material/web/button/outlined-button.js";
 import "@material/web/progress/linear-progress.js";
 import App from "./App.tsx";
 import "./pwa";
