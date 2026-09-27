@@ -6,10 +6,10 @@ export type DeliveryPin = Coordinate & { confirmed: true };
 export type GeoRoute = { version: string; destination: DeliveryPin; label: string; points: Coordinate[]; meters: number; seconds: number; pickups?: { id: string; name: string }[] };
 // Pickup anchors stay independent of the customer meeting corridors.
 export const campusStops = [
-  { id: "summit-pickup", label: "Summit demo pickup", lat: 37.363452, lng: -120.427793 },
+  { id: "summit-pickup", label: "Summit demo pickup", lat: 37.363352, lng: -120.429973 },
   { id: "scholars-west", label: "Scholars Lane · west", lat: 37.363323, lng: -120.430034 },
   { id: "scholars-bend", label: "Scholars Lane · bend", lat: 37.363322, lng: -120.428197 },
-  { id: "bobcat-pickup", label: "Bobcat demo pickup", lat: 37.364864, lng: -120.425233 },
+  { id: "bobcat-pickup", label: "Bobcat demo pickup", lat: 37.366145, lng: -120.424243 },
   { id: "scholars-turn", label: "Scholars Lane · turn", lat: 37.363441, lng: -120.427897 },
   { id: "scholars-mid", label: "Scholars Lane · central", lat: 37.364781, lng: -120.426052 },
   { id: "scholars-east", label: "Scholars Lane · east", lat: 37.365562, lng: -120.424938 },
@@ -25,7 +25,7 @@ export const pinCorridors = [
 ];
 export const pinEdges = pinCorridors.flatMap(c => c.edges);
 // These connectors are animation estimates only, not robot navigation instructions.
-export const geoEdges = [...pinEdges, [0, 4], [3, 6], [8, 2], [9, 4]];
+export const geoEdges = [...pinEdges, [0, 1], [3, 6], [8, 2], [9, 4]];
 export function deliveryArea(value: unknown) {
   if (!coordinate(value)) return null;
   const nearest = pinCorridors.flatMap(c => c.edges.map(([a, b]) => ({

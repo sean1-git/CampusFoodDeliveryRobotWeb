@@ -85,3 +85,14 @@ test("meeting validation excludes simulated connectors and preserves Summit disp
   assert.deepEqual(route.points[0], {lat: campusStops[0].lat, lng: campusStops[0].lng});
   assert.deepEqual(route.pickups.map(p => p.id), ["summits"]);
 });
+
+test("each store dispatches from its supplied pickup coordinate", () => {
+  for (const [id, point] of [
+    ["summits", {lat: 37.363352, lng: -120.429973}],
+    ["library", {lat: 37.366145, lng: -120.424243}],
+  ]) {
+    const route = pickupRoute(destination, [id]);
+    assert.deepEqual(route.points[0], point);
+    assert.deepEqual(route.pickups.map(store => store.id), [id]);
+  }
+});
