@@ -105,7 +105,7 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
     </div>
     <p className="map-notice">Highlighted lines mark customer meeting areas, with a {CORRIDOR_METERS} m pin tolerance. The darker route is a demo animation estimate. A physical robot will use its own safe routing and tracker; those systems are not connected yet. Store markers are simulated pickup points.</p>
     {pin && <p>Pin: {pin.lat.toFixed(6)}, {pin.lng.toFixed(6)} · {valid ? "Within the demo delivery paths" : "Outside the supported paths — choose another point"}</p>}
-    {route && <p>Pickup: {route.pickups?.map(p => p.name).join(" → ")} → your pin. About {Math.max(1, Math.ceil((route.seconds + GEO_PREPARATION_MS / 1000) / 60))} minutes including preparation · {route.meters} m simulated travel.</p>}
+    {route && <p>Pickup: {route.pickups?.map(p => p.name).join(" → ")} → your pin. About {Math.max(1, Math.ceil((route.seconds + GEO_PREPARATION_MS / 1000) / 60))} minutes including preparation and pickup stops · {route.meters} m simulated travel.</p>}
     {message && <p role="status">{message}</p>}
     {!online && <p role="alert">Reconnect to load the map and confirm your delivery pin.</p>}
     <button className="primary" disabled={!valid || !ready || !online || locked} onClick={confirm}>Confirm this delivery pin</button>

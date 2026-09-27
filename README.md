@@ -184,3 +184,5 @@ Catalog revision changes force an online refresh even if the previous 15-minute 
 - Two additional independent pin segments: northwest (37.364892, -120.426174) → (37.365574, -120.426975), northeast (37.365833, -120.424637) → (37.367130, -120.422809). The gap between these segments is not a customer delivery corridor; demo connectors provide simulated pickup access.
 
 - Separate additional segments: northeast link (37.365636, -120.424880) → (37.365822, -120.424660), and east campus path (37.364022, -120.424149) → (37.364672, -120.423743). The northeast demo connection now follows the supplied link with short endpoint connectors; the east branch connects to Campus path D. No customer corridor connects the two separate segments.
+
+- New orders freeze a pickup itinerary, per-store packing lists and timed travel legs. The demo prepares for 20 seconds, loads for 5 seconds at each store, then delivers after all pickups. Mixed orders compare both pickup sequences; existing orders without this itinerary retain their original travel timing. Real robot position, readiness and capacity are not integrated.

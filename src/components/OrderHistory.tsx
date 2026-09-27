@@ -23,7 +23,7 @@ export function OrderHistory({ orders, setView, online }: Props) {
       </div>
       <p className="simulation-note">
         Demo timeline: 20 seconds to prepare, then a simulated trip along the
-        campus route. Order status refreshes every 5 seconds while connected.
+        campus route with a 5-second loading stop per store for new orders. Order status refreshes every 5 seconds while connected.
       </p>
       {orders.length === 0 ? (
         <div className="empty-orders">
@@ -52,7 +52,7 @@ export function OrderHistory({ orders, setView, online }: Props) {
               </div>
               <span className={`status ${order.status}`}>{order.status}</span>
             </div>
-            <ol className="timeline">
+            {!order.deliveryRoute?.journey && <ol className="timeline">
               {["preparing", "delivering", "delivered"].map((step, index) => (
                 <li
                   key={step}
@@ -72,7 +72,7 @@ export function OrderHistory({ orders, setView, online }: Props) {
                       : "Delivered"}
                 </li>
               ))}
-            </ol>
+            </ol>}
             <p className="delivery-eta" role="status">
               {order.status === "preparing" ? (
                 <>

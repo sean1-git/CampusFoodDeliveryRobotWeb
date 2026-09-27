@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { campusStops, pinEdges, deliveryArea, confirmedRoute, routeToPin, pickupRoute, geoPosition, geoTimeline } from "../shared/campusGeo.ts";
+import { campusStops, pinEdges, deliveryArea, confirmedRoute, routeToPin, pickupRoute, geoPosition, geoTimeline, deliverySteps, PICKUP_SECONDS, GEO_PREPARATION_MS } from "../shared/campusGeo.ts";
 import { openDatabase } from "../server/local-db.mjs";
 import { handleApi } from "../server/api.mjs";
 import { studentSession } from "./student-fixture.mjs";
@@ -140,4 +140,29 @@ test("separate northeast link and east path accept pins from either store", () =
     }
   }
   assert.equal(deliveryArea({lat:37.364672,lng:-120.423443}),null);
+});
+
+test("mixed pickup ETA compares both sequences and robot pauses at each loading stop", () => {
+  const route = pickupRoute(destination, ["summits", "library"]);
+  const forward = routeToPin(campusStops[3], 0).seconds + routeToPin(destination, 3).seconds + 2 * PICKUP_SECONDS;
+  const reverse = routeToPin(campusStops[0], 3).seconds + routeToPin(destination, 0).seconds + 2 * PICKUP_SECONDS;
+  assert.equal(route.seconds, Math.min(forward, reverse));
+  for (let i=0; i<route.pickups.length; i++) {
+    const stop=route.pickups[i];
+    assert.equal(stop.departureSeconds-stop.arrivalSeconds, PICKUP_SECONDS);
+    assert.deepEqual(geoPosition(route,stop.arrivalSeconds+2),route.journey[i].points[0]);
+  }
+  assert.equal(route.journey.at(-1).startsAtSeconds,route.pickups.at(-1).departureSeconds);
+  assert.deepEqual(geoPosition(route,route.seconds+1),route.destination);
+});
+test("mixed-order progress completes both pickups before the final delivery stage", () => {
+  const route=pickupRoute(destination,["summits","library"]), created=1000, departure=created+GEO_PREPARATION_MS;
+  const current = now => deliverySteps(route,created,now).find(s=>s.state==="current").label;
+  assert.equal(current(created),"Preparing");
+  assert.match(current(departure),/^Pickup 1/);
+  assert.match(current(departure+route.pickups[0].departureSeconds*1000),/^Pickup 2/);
+  assert.equal(current(departure+route.pickups[1].departureSeconds*1000),"Delivering to your pin");
+  assert.equal(current(departure+route.seconds*1000),"Delivered");
+  const single=pickupRoute(destination,["summits"]);
+  assert.equal(deliverySteps(single,created,created).length,4);
 });

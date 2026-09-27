@@ -108,6 +108,10 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
   // Store ownership and route geometry come from the server, never client claims.
   const route = pickupRoute(body.destination, items.map(item => productsById.get(item.id).storeId));
   if (!route) return json({ code: "delivery_pin_required", error: "Confirm an exact delivery pin on a highlighted UC Merced demo path before checkout. Pins outside the service area are not accepted." }, 400);
+  // Freeze the packing list for each pickup using trusted catalog store ownership.
+  route.pickups = route.pickups.map(pickup => ({ ...pickup, items: items
+    .filter(item => productsById.get(item.id).storeId === pickup.id)
+    .map(item => ({ name: item.name, quantity: item.quantity })) }));
   const fingerprint = JSON.stringify({ items, destination: route.destination });
   const existing = await db
     .prepare("SELECT * FROM orders WHERE account_id = ? AND request_key = ?")
