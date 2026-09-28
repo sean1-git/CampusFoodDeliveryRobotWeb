@@ -42,7 +42,7 @@ export const Storefront = memo(function Storefront({
             if (next < 0) return; event.preventDefault(); selectStore(stores[next].id);
             document.getElementById(`store-tab-${stores[next].id}`)?.focus();
           }}>
-          <span className="store-tab-icon" aria-hidden="true">{store.icon}</span>
+          <span className={`store-tab-icon${store.image ? " store-tab-photo" : ""}`} aria-hidden="true">{store.image ? <img src={store.image} alt="" width="56" height="56" /> : store.icon}</span>
           <span>{store.name}<small>{catalog.products.filter(p => p.storeId === store.id).length} simulated items</small></span>
         </button>)}
       </div>
