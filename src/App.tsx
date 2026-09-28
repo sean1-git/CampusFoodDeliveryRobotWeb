@@ -73,7 +73,7 @@ export default function App() {
             </button>
           </div>
         )}
-        {orderCooldownMs > 0 && nextOrderAt && <DeliveryStatus {...store} />}
+        {view !== "orders" && orderCooldownMs > 0 && nextOrderAt && <DeliveryStatus {...store} />}
         <div className={notice ? "message" : "sr-only"} role="status" aria-live="polite">
           {notice}
         </div>

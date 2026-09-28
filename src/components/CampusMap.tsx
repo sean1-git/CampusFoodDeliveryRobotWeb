@@ -64,31 +64,72 @@ export function CampusMap({ location, startedAt, now, compact = false }: {
 export function OrderRoute({ order, online }: { order: Order; online: boolean }) {
   const clock = useSimulationClock(order.status !== "delivered");
   // Measure elapsed time from receipt, using server time to avoid device-clock skew.
-  const now = order.serverNow != null && order.receivedAt != null
+  const estimatedNow = order.serverNow != null && order.receivedAt != null
     ? order.serverNow + Math.max(0, clock - order.receivedAt) : clock;
+  const confirmed = order.status === "delivered";
+  const now = confirmed ? Math.max(estimatedNow, order.arrivesAt) : estimatedNow;
   const departure = order.departsAt ?? order.createdAt + PREPARATION_MS;
-  const preparing = now < departure;
-  const arrived = now >= order.arrivesAt;
-  const steps = order.deliveryRoute?.journey ? deliverySteps(order.deliveryRoute, order.createdAt, now) : null;
-  const currentStep = steps?.find(step => step.state === "current");
+  const awaitingConfirmation = !confirmed && now >= order.arrivesAt;
+  // The animation can reach its ETA offline; only the API confirms delivery.
+  const progressTime = confirmed ? now : Math.min(now, order.arrivesAt - 1);
+  const steps = order.deliveryRoute?.journey
+    ? deliverySteps(order.deliveryRoute, order.createdAt, progressTime)
+    : ["Preparing", "Robot en route", "Delivered"].map((label, index) => {
+      const current = ["preparing", "delivering", "delivered"].indexOf(order.status);
+      return { label, state: index < current ? "complete" : index === current ? "current" : "upcoming" };
+    });
+  const currentStep = steps.find(step => step.state === "current");
   const left = Math.max(0, Math.ceil((order.arrivesAt - now) / 1000));
-  return <div className="order-route">
-    {steps && <ol className="pickup-timeline" aria-label="Simulated pickup and delivery progress">
-      {steps.map((step, index) => <li key={index} className={step.state} aria-current={step.state === "current" ? "step" : undefined}>
-        <span aria-hidden="true">{step.state === "complete" ? "✓" : index + 1}</span>
-        <div><strong>{step.label}</strong><small>{(step.state === "complete" || index === steps.length - 1 && arrived) ? "Complete" : step.state === "current" ? "In progress · simulated" : "Up next"}</small>{index > 0 && index <= (order.deliveryRoute?.pickups?.length ?? 0) && <small>{order.deliveryRoute?.pickups?.[index - 1].items?.map(item => `${item.quantity} × ${item.name}`).join(" · ")}</small>}</div>
-      </li>)}
-    </ol>}
-    {order.deliveryRoute ? <GoogleDeliveryMap pin={order.deliveryRoute.destination} route={order.deliveryRoute}
-      robot={geoPosition(order.deliveryRoute, (now - departure) / 1000)} /> : <CampusMap location={order.location} startedAt={departure} now={now} compact />}
-    <div className="order-route-info">
-      <p className="eyebrow">SIMULATED DELIVERY</p>
-      <h3>{currentStep?.label ?? (arrived ? "Demo arrival complete" : preparing ? "Preparing for dispatch" : "Robot on its demo route")}</h3>
-      <p>{arrived ? "The simulated robot reached your selected meeting point." : <>Time to demo arrival: <strong>{duration(left)}</strong></>}</p>
-      {order.deliveryRoute && <p>Pickup: {order.deliveryRoute.pickups?.map(p => p.name).join(" → ")} → confirmed pin at {order.deliveryRoute.destination.lat.toFixed(6)}, {order.deliveryRoute.destination.lng.toFixed(6)}. {order.deliveryRoute.meters} m on the demo network.</p>}
-      <p>{preparing ? "20-second preparation, then store pickups and delivery along the highlighted path." : "Route follows estimated travel times in the illustrative network."}</p>
-      {order.deliveryRoute?.journey && <p>Each pickup includes a 5-second simulated loading stop. All items are collected before delivery to your pin.</p>}
-      {!online && <p className="map-notice">Offline: this is a local prediction of the demo timeline, not a live robot position.</p>}
+  const stage = confirmed ? "Delivered. Enjoy your study break."
+    : awaitingConfirmation ? "Waiting for delivery confirmation"
+    : currentStep?.label ?? "Your robot is on its way";
+  return <div className="order-tracking">
+    <div className="order-progress-summary">
+      <div><p className="eyebrow">SIMULATED DELIVERY</p><h3>{stage}</h3>
+        <p>{confirmed ? "Your demo delivery is complete." : awaitingConfirmation
+          ? "The estimated arrival time has passed. We’ll update this order when the server confirms."
+          : "Follow your robot from the pickup shops to your meeting point."}</p>
+      </div>
+      {!confirmed && <div className="order-arrival-estimate">
+        <span>Estimated arrival</span>
+        <strong><time dateTime={new Date(order.arrivesAt).toISOString()}>{new Date(order.arrivesAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time></strong>
+        <span role="timer" aria-live="off">{awaitingConfirmation ? "Awaiting confirmation" : `${duration(left)} remaining`}</span>
+      </div>}
+    </div>
+    {/* Announce stage transitions, not each frame of the robot or countdown. */}
+    <p className="sr-only" role="status">{stage}</p>
+    {!online && <p className="order-offline-note" role="status">Offline · showing a saved route and estimated progress. Reconnect for confirmed order updates.</p>}
+    <div className="order-tracking-layout">
+      {order.deliveryRoute ? <GoogleDeliveryMap mode="tracking" destinationLabel={order.location}
+        pin={order.deliveryRoute.destination} route={order.deliveryRoute}
+        robot={geoPosition(order.deliveryRoute, (now - departure) / 1000)} />
+        : <CampusMap location={order.location} startedAt={departure} now={now} compact />}
+      <div className="order-journey">
+        <h3>Pickup & delivery</h3>
+        <ol className="order-journey-steps" aria-label="Simulated pickup and delivery progress">
+          {steps.map((step, index) => {
+            const complete = step.state === "complete" || confirmed;
+            const finalStep = index === steps.length - 1;
+            const state = complete ? "complete" : step.state;
+            const pickup = order.deliveryRoute?.journey && index > 0 && index <= (order.deliveryRoute.pickups?.length ?? 0)
+              ? order.deliveryRoute.pickups?.[index - 1] : null;
+            return <li key={index} className={state} aria-current={!complete && state === "current" ? "step" : undefined}>
+              <span className="order-step-number" aria-hidden="true">{complete ? "✓" : index + 1}</span>
+              <div><strong>{step.label}</strong>
+                <small>{complete ? "Complete" : finalStep && awaitingConfirmation ? "Awaiting confirmation" : state === "current" ? "In progress · estimated" : "Up next"}</small>
+                {pickup?.items?.length ? <p>{pickup.items.map(item => `${item.quantity} × ${item.name}`).join(" · ")}</p> : null}
+              </div>
+            </li>;
+          })}
+        </ol>
+        <div className="order-meeting-point"><span className="eyebrow">YOUR MEETING POINT</span><p>{order.location}</p>
+          {order.deliveryRoute && <span className="order-coordinates">{order.deliveryRoute.destination.lat.toFixed(6)}, {order.deliveryRoute.destination.lng.toFixed(6)}</span>}
+        </div>
+        <details className="order-timing-help"><summary>About this delivery estimate</summary>
+          <p>20 seconds of preparation, then a simulated campus trip{order.deliveryRoute?.journey ? " with a 5-second loading stop at each shop" : ""}. All items are collected before delivery.</p>
+          {order.deliveryRoute && <p>Saved route: {Math.round(order.deliveryRoute.meters).toLocaleString()} meters. The robot position is animated, not live GPS.</p>}
+        </details>
+      </div>
     </div>
   </div>;
 }
