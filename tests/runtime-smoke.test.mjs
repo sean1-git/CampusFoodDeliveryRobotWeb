@@ -86,6 +86,17 @@ test("production runtime works outside the checkout without node_modules", { tim
   assert.match(robots.headers.get("content-type"), /text\/plain/);
   assert.match(await robots.text(), /^User-agent:/m);
 
+  const photo = await fetch(origin + "/summit-marketplace.jpg", { signal: AbortSignal.timeout(5000) });
+  assert.equal(photo.status, 200);
+  assert.match(photo.headers.get("content-type"), /image\/jpeg/);
+  assert.ok(photo.headers.get("etag"));
+  await photo.arrayBuffer();
+  const unchanged = await fetch(origin + "/summit-marketplace.jpg", {
+    headers: { "If-None-Match": photo.headers.get("etag") }, signal: AbortSignal.timeout(5000),
+  });
+  assert.equal(unchanged.status, 304);
+  assert.equal((await unchanged.arrayBuffer()).byteLength, 0);
+
   let cookie = "", csrf = "";
   const key = randomUUID();
   async function api(path, body) {
@@ -109,6 +120,27 @@ test("production runtime works outside the checkout without node_modules", { tim
   assert.match(issuedCookie, /Secure/i);
   cookie = issuedCookie.split(";")[0]; csrf = session.body.csrf;
   assert.ok(csrf);
+  // Exercise the actual Node socket bridge: buffering Response.arrayBuffer()
+  // would hang here even if the API's in-memory stream unit tests passed.
+  const streamAbort = new AbortController();
+  const events = await fetch(origin + "/api/events", {
+    headers: { Cookie: cookie, Origin: "https://campus.test" },
+    signal: AbortSignal.any([streamAbort.signal, AbortSignal.timeout(10000)]),
+  });
+  assert.equal(events.status, 200);
+  assert.match(events.headers.get("content-type"), /text\/event-stream/);
+  assert.match(events.headers.get("cache-control"), /no-store/);
+  const reader = events.body.getReader();
+  t.after(() => { streamAbort.abort(); });
+  let received = "";
+  async function untilEvent(name) {
+    while (!received.includes(`event: ${name}\n`)) {
+      const next = await reader.read();
+      assert.equal(next.done, false, "Event stream closed before its notification");
+      received += new TextDecoder().decode(next.value);
+    }
+  }
+  await untilEvent("ready");
   let held = await api("/api/reservations", { items: [{ id: "sandwich", quantity: 1 }],
     destination: { lat: 37.365562, lng: -120.424938, confirmed: true } });
   for (let tries = 0; held.response.status === 202 && tries < 20; tries++) {
@@ -116,6 +148,9 @@ test("production runtime works outside the checkout without node_modules", { tim
   }
   assert.equal(held.response.status, 200, JSON.stringify(held.body));
   assert.equal(held.body.status, "held");
+  await untilEvent("change");
+  await reader.cancel();
+  streamAbort.abort();
   assert.equal((await api("/api/session")).body.balanceCents, 5000);
   const order = await api(`/api/reservations/${key}/confirm`, {});
   assert.equal(order.response.status, 201, JSON.stringify(order.body));

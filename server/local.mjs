@@ -6,11 +6,13 @@ import { createServer } from "node:http";
 import { mkdirSync, existsSync, statSync } from "node:fs";
 import { resolve, extname, sep } from "node:path";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { handleApi, secureResponse } from "./api.mjs";
 import { openDatabase } from "./local-db.mjs";
 import { createRequestUrlResolver, InvalidRequestUrl } from "./request-url.mjs";
+import { createOrderEvents } from "./order-events.mjs";
 
-import { staticBody } from "./static-assets.mjs";
+import { staticResponse } from "./static-assets.mjs";
 
 const requestUrl = createRequestUrlResolver(process.env);
 
@@ -22,6 +24,7 @@ const DB = openDatabase(
   ),
 );
 const root = resolve("dist/client");
+const ORDER_EVENTS = createOrderEvents({ db: DB });
 const types = {
   ".html": "text/html",
   ".txt": "text/plain; charset=utf-8",
@@ -37,17 +40,22 @@ const types = {
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "127.0.0.1";
 const server = createServer(async (incoming, outgoing) => {
+  const abort = new AbortController();
+  const disconnect = () => abort.abort();
+  outgoing.once("close", disconnect);
+  incoming.once("aborted", disconnect);
   try {
     const url = requestUrl(incoming);
     let response;
     if (url.pathname.startsWith("/api/")) {
-      const init = { method: incoming.method, headers: incoming.headers };
+      const init = { method: incoming.method, headers: incoming.headers, signal: abort.signal };
       if (!["GET", "HEAD"].includes(incoming.method)) {
         init.body = Readable.toWeb(incoming);
         init.duplex = "half";
       }
       response = await handleApi(new Request(url, init), {
         DB,
+        ORDER_EVENTS,
         INTEGRATION_MODE: process.env.INTEGRATION_MODE || "demo",
         CANONICAL_ORIGIN: process.env.CANONICAL_ORIGIN,
         NODE_ENV: process.env.NODE_ENV,
@@ -74,27 +82,40 @@ const server = createServer(async (incoming, outgoing) => {
           : "no-cache",
       };
       response = existsSync(file)
-        ? new Response(staticBody(file, incoming.headers["accept-encoding"], headers), { headers })
+        ? staticResponse(file, incoming.headers["accept-encoding"], headers,
+          { ifNoneMatch: incoming.headers["if-none-match"], method: incoming.method })
         : new Response("Run npm run build before npm start.", { status: 503 });
     }
     const secured = secureResponse(response);
+    if (outgoing.destroyed) { await secured.body?.cancel(); return; }
     outgoing.writeHead(secured.status, Object.fromEntries(secured.headers));
-    outgoing.end(Buffer.from(await secured.arrayBuffer()));
+    if (secured.headers.get("content-type")?.startsWith("text/event-stream") && secured.body) {
+      outgoing.flushHeaders();
+      // Streaming preserves SSE delivery and bounds buffering when clients are
+      // slow. Destroying the socket cancels the Web stream and its hub timers.
+      await pipeline(Readable.fromWeb(secured.body), outgoing, { signal: abort.signal });
+    } else outgoing.end(Buffer.from(await secured.arrayBuffer()));
   } catch (error) {
+    if (outgoing.destroyed || abort.signal.aborted) return;
+    if (outgoing.headersSent) { outgoing.destroy(); return; }
     outgoing.writeHead(error instanceof InvalidRequestUrl ? 400 : 500, {
       "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store",
     });
     outgoing.end(error instanceof InvalidRequestUrl ? "Invalid request URL or proxy headers."
       : "The local server could not handle this request.");
+  } finally {
+    outgoing.removeListener("close", disconnect);
+    incoming.removeListener("aborted", disconnect);
   }
 });
 server.listen(port, host, () =>
   console.log(`Campus Store demo: http://${host}:${port}`),
 );
 for (const signal of ["SIGINT", "SIGTERM"])
-  process.on(signal, () =>
+  process.on(signal, () => {
+    ORDER_EVENTS.close();
     server.close(() => {
       DB.close();
       process.exit(0);
-    }),
-  );
+    });
+  });

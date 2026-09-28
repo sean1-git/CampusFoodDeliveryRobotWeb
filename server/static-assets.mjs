@@ -1,4 +1,37 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+
+// Cache only public static bytes, with a fixed memory budget. File metadata
+// invalidates entries in development; deployed container files are immutable.
+const files = new Map();
+const etags = new WeakMap();
+const MAX_BYTES = 8 * 1024 * 1024;
+let cachedBytes = 0;
+function readStaticFile(file) {
+  const metadata = statSync(file);
+  const version = `${metadata.size}:${metadata.mtimeMs}:${metadata.ctimeMs}`;
+  const previous = files.get(file);
+  if (previous?.version === version) {
+    files.delete(file);
+    files.set(file, previous);
+    return previous.body;
+  }
+  if (previous) {
+    cachedBytes -= previous.body.length;
+    files.delete(file);
+  }
+  const body = readFileSync(file);
+  if (body.length <= MAX_BYTES) {
+    while (files.size >= 128 || cachedBytes + body.length > MAX_BYTES) {
+      const oldest = files.keys().next().value;
+      cachedBytes -= files.get(oldest).body.length;
+      files.delete(oldest);
+    }
+    files.set(file, { version, body });
+    cachedBytes += body.length;
+  }
+  return body;
+}
 
 // Honor explicit q=0 exclusions and prefer Brotli when quality values tie.
 export function acceptedEncodings(header = "") {
@@ -17,7 +50,26 @@ export function staticBody(file, acceptEncoding, headers) {
     const compressed = file + (encoding === "br" ? ".br" : ".gz");
     if (!existsSync(compressed)) continue;
     headers["Content-Encoding"] = encoding;
-    return readFileSync(compressed);
+    return readStaticFile(compressed);
   }
-  return readFileSync(file);
+  return readStaticFile(file);
+}
+
+export function staticResponse(file, acceptEncoding, headers, { ifNoneMatch, method = "GET" } = {}) {
+  const body = staticBody(file, acceptEncoding, headers);
+  let etag = etags.get(body);
+  if (!etag) {
+    etag = `"${createHash("sha256").update(body).digest("hex")}"`;
+    etags.set(body, etag);
+  }
+  headers.ETag = etag;
+  // Validators identify the selected representation, including compression.
+  // Unversioned images/HTML still revalidate, so releases do not strand old UI.
+  const unchanged = String(ifNoneMatch ?? "").split(",").some(value => {
+    const tag = value.trim();
+    return tag === "*" || tag.replace(/^W\//, "") === etag;
+  });
+  if (["GET", "HEAD"].includes(method) && unchanged) return new Response(null, { status: 304, headers });
+  headers["Content-Length"] = String(body.length);
+  return new Response(method === "HEAD" ? null : body, { headers });
 }

@@ -56,6 +56,13 @@ export async function handleApi(request, env, now = Date.now()) {
         return json({ error: "Request origin is not allowed." }, 403);
       }
     }
+    if (url.pathname === "/api/events" && request.method === "GET") {
+      const allowed = new Set([canonicalOrigin(env.CANONICAL_ORIGIN, env.NODE_ENV === "production") || url.origin,
+        ...configuredOrigins(env)]);
+      if (request.headers.get("sec-fetch-site") === "cross-site"
+        || (request.headers.has("origin") && !allowed.has(request.headers.get("origin"))))
+        return json({ error: "Request origin is not allowed." }, 403);
+    }
     const db = env.DB;
     if (!db)
       return json({ error: "The demo store is temporarily unavailable." }, 503);
@@ -80,6 +87,30 @@ export async function handleApi(request, env, now = Date.now()) {
     }
     if (!session) return json({ code: "authentication_required",
       error: "Your demo session expired. Reconnect to start a new demo wallet." }, 401);
+    if (url.pathname === "/api/events" && request.method === "GET") {
+      // Worker deployments without a shared event transport use client polling.
+      if (!env.ORDER_EVENTS) return json({ error: "Live updates are unavailable on this deployment." }, 501);
+      return env.ORDER_EVENTS.subscribe(request, session);
+    }
+    async function checkoutWithEvents(operation) {
+      if (!env.ORDER_EVENTS) return operation();
+      let previousOrder;
+      try { previousOrder = (await db.prepare("SELECT COALESCE(MAX(rowid), 0) AS latest FROM orders").first()).latest; }
+      catch { /* Notification bookkeeping must never block checkout. */ }
+      const response = await operation();
+      const accounts = new Set(request.method === "POST" && response.ok ? [session.account_id] : []);
+      try {
+        // Queue settlement can accept a different account or finish a delayed
+        // purchase during GET recovery. Notify only newly recorded orders, not
+        // every unchanged checkout poll (which would form a refresh loop).
+        if (previousOrder !== undefined) {
+          const accepted = await db.prepare("SELECT DISTINCT account_id FROM orders WHERE rowid > ?").bind(previousOrder).all();
+          for (const row of accepted.results) accounts.add(row.account_id);
+        }
+        await Promise.all([...accounts].map(accountId => env.ORDER_EVENTS.publish(accountId)));
+      } catch { console.error("Order update notification failed."); }
+      return response;
+    }
     if (url.pathname === "/api/session" && request.method === "GET") {
       const spent = await db
         .prepare(
@@ -108,16 +139,16 @@ export async function handleApi(request, env, now = Date.now()) {
       );
     }
     if (url.pathname === "/api/reservations" && request.method === "POST") {
-      return await createDemoOrder(request, db, session, now, "reservation");
+      return await checkoutWithEvents(() => createDemoOrder(request, db, session, now, "reservation"));
     }
     const reservationPath = /^\/api\/reservations\/([0-9a-f-]{36})\/(confirm|cancel)$/i.exec(url.pathname);
     if (reservationPath && request.method === "POST") {
-      return await reservationAction(request, db, session, reservationPath[1], reservationPath[2].toLowerCase(), now);
+      return await checkoutWithEvents(() => reservationAction(request, db, session, reservationPath[1], reservationPath[2].toLowerCase(), now));
     }
     if (url.pathname.startsWith("/api/checkouts/") && request.method === "GET") {
       const key = url.pathname.slice("/api/checkouts/".length);
       if (!validId(key)) return json({ error: "Checkout not found." }, 404);
-      return await checkoutResult(db, session.account_id, key, now);
+      return await checkoutWithEvents(() => checkoutResult(db, session.account_id, key, now));
     }
     if (url.pathname === "/api/orders" && request.method === "GET") {
       return json({ orders: await accountOrders(db, session.account_id, now) });
@@ -134,7 +165,7 @@ export async function handleApi(request, env, now = Date.now()) {
     }
     if (url.pathname !== "/api/orders" || request.method !== "POST")
       return json({ error: "Not found." }, 404);
-    return await createDemoOrder(request, db, session, now);
+    return await checkoutWithEvents(() => createDemoOrder(request, db, session, now));
   } catch (error) {
     if (["JSON_REQUIRED", "INVALID_JSON", "TOO_LARGE"].includes(error.message))
       return json(

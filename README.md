@@ -20,7 +20,7 @@ The demo uses sample inventory and a $50 wallet. School sign-in, real payments, 
 | Layer | Technology |
 | --- | --- |
 | Frontend | React, TypeScript, Vite, Material Web |
-| Backend | Node.js HTTP API, cookie sessions, CSRF protection |
+| Backend | Node.js HTTP API, cookie sessions, CSRF protection, Server-Sent Events |
 | Database | SQLite through Node's built-in driver; Drizzle schema and SQL migrations |
 | Maps and routing | Google Maps JavaScript API, OpenStreetMap walkway graph, Dijkstra |
 | Infrastructure | Docker, Cloud Run; Cloud Build deploys, GitHub Actions reports deployment status |
@@ -32,6 +32,7 @@ The demo uses sample inventory and a $50 wallet. School sign-in, real payments, 
 - **React and TypeScript:** reusable components and typed state keep the UI maintainable. Lazy-loaded maps, Brotli/gzip compression, and reused calculations reduce loading and browser work.
 - **SQLite:** simple demo setup with transactional stock updates. FIFO checkout and idempotency keys protect against overselling and duplicate charges.
 - **Docker:** packages the API, built frontend, shop photos, and icons into one consistent Cloud Run release. A [multi-stage build](https://docs.docker.com/build/building/multi-stage/) keeps build tools and original artwork out of the runtime image.
+- **Less traffic:** server-sent notifications refresh orders when they change, with polling as a fallback. ETags avoid resending unchanged static files; the PWA cache handles offline visits.
 
 ## Project structure
 
@@ -72,7 +73,7 @@ The demo runs one Cloud Run instance with local SQLite; container replacement re
 
 1. **Shared database:** move to [Cloud SQL for PostgreSQL](https://docs.cloud.google.com/sql/docs/postgres/connect-run) with connection pooling. Adapt SQLite transactions and triggers, then load-test checkout before adding API instances.
 2. **Background jobs:** use [Cloud Tasks](https://docs.cloud.google.com/run/docs/triggering/using-tasks) for inventory sync and future robot dispatch, with idempotent retries and database-controlled stock allocation.
-3. **Less server traffic:** add a CDN and event-driven delivery updates. Store future uploads and frequently changing product photos in object storage. Keep account responses private and verify stock at checkout; measure latency and contention before increasing capacity.
+3. **Shared events and CDN:** add a shared event broker before scaling beyond one API instance. Serve static files through a CDN and future product photos from object storage. Keep account responses private and verify stock at checkout.
 
 ## Documentation
 

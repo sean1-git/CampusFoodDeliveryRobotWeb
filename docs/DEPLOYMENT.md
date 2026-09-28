@@ -16,6 +16,39 @@ should use object storage, optionally behind a CDN, so they can change without
 rebuilding the app. Files written inside a Cloud Run container are
 [temporary](https://docs.cloud.google.com/run/docs/container-contract#file_system).
 
+## Traffic and live updates
+
+The Node server exposes `/api/events` as an authenticated Server-Sent Events
+stream. It sends account-specific invalidations after checkout mutations and at
+the saved simulation's pickup and delivery times. A connected browser fetches a
+fresh wallet/order snapshot on a change or reconnect; heartbeat messages do not
+trigger database snapshots. Timers schedule simulation transitions instead of
+repeatedly querying order state. This still represents simulated robot movement.
+
+Streams pause when the page is hidden or offline, rotate after four minutes, and
+reconnect with bounded backoff. Checkout recovery retains its five-second checks;
+the native app, unsupported hosts, and failed streams use polling as a fallback.
+Inventory keeps its fifteen-minute freshness policy. Session cookies scope every
+stream to its account, expired sessions close the stream, and account/API data
+remains `no-store`.
+
+The demo limits streams to four per account and 32 per process, leaving room for
+checkout within the current Cloud Run concurrency limit of 80. Its event hub is
+local to one process. Before adding instances, move to a shared database and a
+shared event broker. Long-lived streams consume request capacity and billable
+time; fewer HTTP requests alone do not guarantee lower hosting costs.
+
+Static responses use ETags and return `304 Not Modified` for unchanged files.
+Fingerprinted assets keep their long cache lifetime; HTML, icons, and shop photos
+revalidate so new deployments can replace them safely. A bounded 8 MiB file cache
+avoids repeated disk reads, while the PWA cache continues to support offline use.
+These changes optimize the existing `run.app` hosting. A CDN and object storage
+are still future infrastructure, not part of this deployment.
+
+References: [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events),
+[Cloud Run request timeouts](https://docs.cloud.google.com/run/docs/configuring/request-timeout),
+[Cloud CDN with Cloud Run](https://docs.cloud.google.com/cdn/docs/setting-up-cdn-with-serverless).
+
 ## Deployment reporting
 
 Google Cloud Build builds this repository and deploys Cloud Run. The GitHub workflow

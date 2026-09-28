@@ -6,6 +6,7 @@ import { initialCart, load, save } from "../lib/storage";
 import { readReservation, reservationExpired, RESERVATION_KEY } from "../lib/inventoryCache";
 import { publishTabEvent, subscribeTabEvents } from "../lib/tabSync";
 import { createRefreshQueue } from "../lib/refreshQueue";
+import { createOrderUpdates } from "../lib/orderUpdates";
 import { sameCartQuantities, summarizeCart } from "../lib/cart";
 import { useInventory } from "./useInventory";
 import { coordinate } from "../../shared/deliveryRoute";
@@ -20,9 +21,13 @@ const location = sampleCatalog.locations[0];
 
 export function useCampusStore() {
   const [online, setOnline] = useState(navigator.onLine);
+  const [visible, setVisible] = useState(document.visibilityState !== "hidden");
   const inventory = useInventory(online);
   const { catalog, refreshInventory } = inventory;
   const [session, setSession] = useState<Session | null>(null);
+  const sessionToken = useRef<string | null>(null);
+  const accountEpoch = useRef(0);
+  const orderUpdates = useRef<ReturnType<typeof createOrderUpdates> | null>(null);
   const [cart, setCart] = useState<Cart>(initialCart);
   const [orders, setOrders] = useState<Order[]>([]);
   const [view, setView] = useState<"shop" | "orders" | "map">("shop");
@@ -59,14 +64,16 @@ export function useCampusStore() {
     void refreshInventory(true).catch(() => {});
   }, [writeHold, refreshInventory]);
 
-  const [refresh] = useState(() => {
-    let sessionToken: string | null = null;
-    return createRefreshQueue(async () => {
+  const readSession = useCallback(async () => {
+      const epoch = accountEpoch.current;
       try {
         const user = await requestJson<Session & { orders: Order[] }>("/api/session?include=orders");
-        const replaced = sessionToken !== null && sessionToken !== user.csrf;
+        // An expiry event invalidates any snapshot already in flight.
+        if (epoch !== accountEpoch.current) return;
+        const replaced = sessionToken.current !== null && sessionToken.current !== user.csrf;
         const receivedAt = Date.now();
-        sessionToken = user.csrf;
+        if (replaced) { accountEpoch.current++; orderUpdates.current?.resetSession(); }
+        sessionToken.current = user.csrf;
         setSession(user);
         setServerClockOffset(user.serverNow ? user.serverNow - receivedAt : 0);
         setClock(receivedAt);
@@ -77,19 +84,35 @@ export function useCampusStore() {
         setOrders(user.orders.map((order) => ({ ...order, receivedAt })));
       } catch (failure) {
         const problem = failure as ApiError;
+        if (epoch !== accountEpoch.current) return;
         if (problem.status === 401) {
           // An expired/revoked login must not leave another student's wallet
           // or order history visible. Do not rebroadcast repeated 401 polls.
+          accountEpoch.current++;
           setSession(null);
           setOrders([]);
           setError(problem.message);
-          if (sessionToken !== null) publishTabEvent("session");
-          sessionToken = null;
+          orderUpdates.current?.resetSession();
+          if (sessionToken.current !== null) publishTabEvent("session");
+          sessionToken.current = null;
         }
         throw failure;
       }
-    });
-  });
+  }, []);
+  const refreshQueue = useRef<ReturnType<typeof createRefreshQueue> | null>(null);
+  const refresh = useCallback((invalidate = true) => {
+    refreshQueue.current ??= createRefreshQueue(readSession);
+    return refreshQueue.current(invalidate);
+  }, [readSession]);
+  const expireSession = useCallback(() => {
+    accountEpoch.current++;
+    orderUpdates.current?.resetSession();
+    sessionToken.current = null;
+    setSession(null);
+    setOrders([]);
+    setServerClockOffset(0);
+    publishTabEvent("session");
+  }, []);
   const finishOrder = useCallback((order: Order) => {
     writeHold(null);
     save("campus-pending", null);
@@ -118,13 +141,14 @@ export function useCampusStore() {
   const reconcileHold = useCallback(async () => {
     const attempt = reservationRef.current;
     if (!attempt || busy.current) return;
+    const epoch = accountEpoch.current;
     try {
       const result = await requestJson<CheckoutReply>(`/api/checkouts/${attempt.key}`);
-      if (reservationRef.current?.key !== attempt.key || busy.current) return;
+      if (epoch !== accountEpoch.current || reservationRef.current?.key !== attempt.key || busy.current) return;
       acceptReply(result, attempt, false);
     } catch (failure) {
       const problem = failure as ApiError;
-      if (reservationRef.current?.key !== attempt.key || busy.current) return;
+      if (epoch !== accountEpoch.current || reservationRef.current?.key !== attempt.key || busy.current) return;
       if (problem.code === "expired") clearExpired();
       else if (problem.status === 410 || problem.status === 404 || problem.code === "sold_out" || problem.code === "insufficient_funds") {
         writeHold(null);
@@ -146,13 +170,16 @@ export function useCampusStore() {
     const apiSuccess = (event: Event) => setLastApiSuccessAt((event as CustomEvent<number>).detail);
     const onOnline = () => setOnline(true);
     const onOffline = () => setOnline(false);
+    const onVisibility = () => setVisible(document.visibilityState !== "hidden");
     window.addEventListener("campus-api-success", apiSuccess);
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("campus-api-success", apiSuccess);
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
@@ -220,16 +247,24 @@ export function useCampusStore() {
     : 0;
   const secondsLeft = reservation ? Math.min(300, Math.max(0, Math.ceil((reservation.expiresAt - clock - reservation.clockOffsetMs) / 1000))) : 0;
   useEffect(() => {
-    if (!online || !csrf) return;
-    const timer = setInterval(() => {
-      void refresh(false).catch(() => {});
-      void reconcileHold();
-    }, activeOrders || hasCheckout ? 5000 : 30000);
-    return () => clearInterval(timer);
-  }, [online, csrf, activeOrders, hasCheckout, refresh, reconcileHold]);
+    const updates = createOrderUpdates({
+      // Browser EventSource cannot authenticate with CapacitorHttp's cookie jar.
+      connect: import.meta.env.MODE !== "native" && typeof EventSource !== "undefined"
+        ? () => new EventSource("/api/events") : undefined,
+      refresh,
+      reconcileCheckout: () => { void reconcileHold(); },
+      sessionExpired: expireSession,
+    });
+    orderUpdates.current = updates;
+    return () => { updates.stop(); orderUpdates.current = null; };
+  }, [refresh, reconcileHold, expireSession]);
+  useEffect(() => {
+    orderUpdates.current?.update({ sessionKey: csrf ?? null, online, visible,
+      activeOrders: activeOrders > 0, checkout: hasCheckout });
+  }, [csrf, online, visible, activeOrders, hasCheckout, refresh, reconcileHold, expireSession]);
 
-  // Elapsed estimates no longer need per-second renders. Server polling still
-  // reconciles active orders and uncertain confirmations, including after expiry.
+  // Stream invalidations reconcile orders; checkout recovery keeps its own timer.
+  // Elapsed estimates no longer need per-second renders.
   const needsCountdown = orderCooldownMs > 0
     || (!!reservation && (reservation.phase !== "confirming" || secondsLeft > 0));
   useEffect(() => {
@@ -268,11 +303,12 @@ export function useCampusStore() {
     setNotice(amount > 0 ? `${product.name} added to your bag.` : `${product.name} quantity updated.`);
   }, [locked]);
   const headers = (key: string) => ({ "Content-Type": "application/json", "X-CSRF-Token": session!.csrf, "Idempotency-Key": key });
-  async function waitForReply(result: CheckoutReply, key: string, confirm = false): Promise<CheckoutReply> {
+  async function waitForReply(result: CheckoutReply, key: string, confirm: boolean, epoch: number): Promise<CheckoutReply> {
     const deadline = Date.now() + 15000;
     while (result.status === "pending") {
       if (Date.now() >= deadline) throw new Error("Checkout is still queued.");
       await new Promise((resolve) => setTimeout(resolve, 100));
+      if (epoch !== accountEpoch.current) return result;
       result = confirm
         ? await requestJson<CheckoutReply>(`/api/reservations/${key}/confirm`, { method: "POST", headers: headers(key) })
         : await requestJson<CheckoutReply>(`/api/checkouts/${key}`);
@@ -282,8 +318,7 @@ export function useCampusStore() {
   function failAction(failure: unknown) {
     const problem = failure as ApiError;
     if (problem.status === 401) {
-      setSession(null);
-      setOrders([]);
+      expireSession();
       void refresh().catch(() => {});
     }
     if (problem.code === "expired") clearExpired();
@@ -302,6 +337,7 @@ export function useCampusStore() {
     // the route. Keep the large walkway graph out of the initial storefront bundle.
     if (!reservationRef.current && (!coordinate(destination) || destination.confirmed !== true)) { setView("map"); return; }
     busy.current = true;
+    const epoch = accountEpoch.current;
     setSubmitting(true);
     setError("");
     const attempt: Reservation = reservationRef.current ?? {
@@ -313,9 +349,12 @@ export function useCampusStore() {
       const result = await requestJson<CheckoutReply>("/api/reservations", {
         method: "POST", headers: headers(attempt.key), body: JSON.stringify(attempt.body),
       });
-      acceptReply(await waitForReply(result, attempt.key), attempt);
+      if (epoch !== accountEpoch.current) return;
+      const reply = await waitForReply(result, attempt.key, false, epoch);
+      if (epoch !== accountEpoch.current) return;
+      acceptReply(reply, attempt);
       void refreshInventory(true).catch(() => {});
-    } catch (failure) { failAction(failure); }
+    } catch (failure) { if (epoch === accountEpoch.current) failAction(failure); }
     finally { busy.current = false; setSubmitting(false); }
   }
   async function placeOrder() {
@@ -325,6 +364,7 @@ export function useCampusStore() {
     if (!attempt && !pending) return;
     if (attempt && reservationExpired(attempt, Date.now())) { clearExpired(); return; }
     busy.current = true;
+    const epoch = accountEpoch.current;
     setSubmitting(true);
     setError("");
     try {
@@ -332,34 +372,41 @@ export function useCampusStore() {
         const result = await requestJson<CheckoutReply>("/api/orders", {
           method: "POST", headers: headers(pending.key), body: JSON.stringify(pending.body),
         });
-        const final = await waitForReply(result, pending.key);
+        if (epoch !== accountEpoch.current) return;
+        const final = await waitForReply(result, pending.key, false, epoch);
+        if (epoch !== accountEpoch.current) return;
         if (final.status !== "held" && final.status !== "pending") finishOrder(final);
       } else if (attempt) {
         writeHold({ ...attempt, phase: "confirming" });
         const result = await requestJson<CheckoutReply>(`/api/reservations/${attempt.key}/confirm`, {
           method: "POST", headers: headers(attempt.key),
         });
-        acceptReply(await waitForReply(result, attempt.key, true), { ...attempt, phase: "confirming" });
+        if (epoch !== accountEpoch.current) return;
+        const reply = await waitForReply(result, attempt.key, true, epoch);
+        if (epoch !== accountEpoch.current) return;
+        acceptReply(reply, { ...attempt, phase: "confirming" });
       }
-    } catch (failure) { failAction(failure); }
+    } catch (failure) { if (epoch === accountEpoch.current) failAction(failure); }
     finally { busy.current = false; setSubmitting(false); }
   }
   async function cancelCheckout() {
     const attempt = reservationRef.current;
     if (!attempt || !online || !session || busy.current || attempt.phase === "confirming") return;
     busy.current = true;
+    const epoch = accountEpoch.current;
     setSubmitting(true);
     writeHold({ ...attempt, phase: "cancelling" });
     try {
       const result = await requestJson<Order | { status: "cancelled" }>(`/api/reservations/${attempt.key}/cancel`, {
         method: "POST", headers: headers(attempt.key),
       });
+      if (epoch !== accountEpoch.current) return;
       if (result.status === "cancelled") {
         writeHold(null);
         setNotice("Reservation cancelled. Your items were released; your bag is kept for editing.");
         void refreshInventory(true).catch(() => {});
       } else finishOrder(result);
-    } catch (failure) { failAction(failure); }
+    } catch (failure) { if (epoch === accountEpoch.current) failAction(failure); }
     finally { busy.current = false; setSubmitting(false); }
   }
   async function reconnect() {
