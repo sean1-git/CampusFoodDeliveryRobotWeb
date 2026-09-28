@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { campusStops, pinEdges, pinCorridors, deliveryArea, pickupRoute, pickupStores, GEO_PREPARATION_MS, CORRIDOR_METERS } from "../../shared/campusGeo";
 import type { Coordinate, DeliveryPin, GeoRoute } from "../../shared/campusGeo";
 import type { CampusStore } from "../hooks/useCampusStore";
+import { stores } from "../../shared/stores";
 import { loadGoogleMaps } from "../lib/googleMaps";
 import "./CampusMap.css";
 
@@ -39,7 +40,12 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
         strokeColor: "#19817b", strokeOpacity: 0.45, strokeWeight: 12, clickable: false }));
 
       pickupStores.forEach(store => {
-        const tag = document.createElement("span"); tag.className = "map-store-marker"; tag.textContent = store.name;
+        const tag = document.createElement("span"); tag.className = "map-store-marker map-store-photo-marker";
+        const photo = document.createElement("img");
+        photo.src = stores.find(entry => entry.id === store.id)!.image;
+        photo.alt = ""; photo.width = 34; photo.height = 34;
+        const label = document.createElement("span"); label.textContent = store.name;
+        tag.append(photo, label);
         new google.maps.marker.AdvancedMarkerElement({ map, position: campusStops[store.node], content: tag, title: `${store.name} · simulated pickup` });
       });
       const marker = new google.maps.marker.AdvancedMarkerElement({ map, title: "Your exact delivery pin", gmpDraggable: !!handlers.current.onPick });
@@ -68,11 +74,26 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
     campusStops.forEach(stop => bounds.extend(stop));
     mapRef.current?.fitBounds(bounds, 40);
   }
+  function showStore(node: number) {
+    // Shop shortcuts only move the camera; the customer still chooses their own pin.
+    mapRef.current?.panTo(campusStops[node]);
+    mapRef.current?.setZoom(18);
+  }
   return <div className="friendly-map">
+    <div className="map-panel-heading"><div><strong>Your campus, connected</strong><span>UC Merced · simulated robot delivery</span></div><span className="map-area-badge">Campus only</span></div>
+    <div className="map-shop-shortcuts" aria-label="Pickup shops">
+      {stores.map(store => <button type="button" className="map-shop-card" key={store.id} disabled={!ready}
+        aria-label={`Show ${store.name} pickup location on the map`}
+        onClick={() => showStore(pickupStores.find(pickup => pickup.id === store.id)!.node)}>
+        <img src={store.image} alt="" width="64" height="64" />
+        <span><small>ROBOT PICKUP</small><strong>{store.name}</strong><span>View on map <span aria-hidden="true">↗</span></span></span>
+      </button>)}
+    </div>
     <div className="map-toolbar"><button className="back" disabled={!ready} onClick={showCampus}>Show campus</button><button className="back" disabled={!ready || !pin} onClick={() => { if (pin) { mapRef.current?.panTo(pin); mapRef.current?.setZoom(19); } }}>Find my pin</button></div>
     {error && <p className="map-notice" role="alert">{error}</p>}
     {!ready && !error && <p role="status">Loading Google Maps…</p>}
     <div ref={element} className="google-map-canvas" aria-label="UC Merced delivery map" />
+    <div className="map-legend"><span><i className="legend-path" />Meeting paths</span><span><i className="legend-route" />Delivery route</span><span>Photo markers show pickup shops</span></div>
   </div>;
 }
 
@@ -126,10 +147,11 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
     <p className="eyebrow">UC MERCED · DELIVERY LOCATION</p>
     <h1>Where should we meet you?</h1>
     <p className="map-intro">Choose a meeting point on a teal path. Tap the map or pick a path below, then confirm your location.</p>
+    <div className="location-tools">
     <div className="location-actions">
       <button type="button" className="location-use-button" ref={useLocationButton} disabled={!online || locked || locating || !ready} aria-describedby="location-privacy" onClick={locate}><span aria-hidden="true">⌖</span> {locating ? "Finding your location…" : "Use my location"}</button>
       <button type="button" className="location-remove-button" disabled={locked || (!pin && !locating)} onClick={removeLocation}>{locating ? "Cancel location request" : "Remove location"}</button>
-      <span id="location-privacy">Optional · we check once, not continuously. Removing clears your current meeting point, not previous orders or your browser’s location permission.</span>
+      <span id="location-privacy">Optional · a one-time location check. You can remove your pin at any time.</span>
     </div>
     <label className="path-picker">Start with a campus path
       <select value="" disabled={locked || !ready || !online} onChange={event => { const stop = campusStops.find(s => s.id === event.target.value); if (stop) pick(stop); }}>
@@ -139,8 +161,8 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
         </optgroup>)}
       </select>
     </label>
+    </div>
     <GoogleDeliveryMap pin={pin} route={route} onPick={locked || !online ? undefined : pick} onReady={setReady} />
-    <div className="map-legend"><span><i className="legend-path" />Available meeting paths</span><span><i className="legend-route" />Simulated delivery route</span><span>Store labels = pickup locations</span></div>
     {message && <p className="map-notice" role="status">{message}</p>}
     <div className={`pin-summary ${pin ? valid ? "pin-valid" : "pin-invalid" : ""}`} role="status" aria-live="polite">
       <span className="pin-summary-icon" aria-hidden="true">{pin ? valid ? "✓" : "!" : "⌖"}</span>
@@ -152,6 +174,6 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
     {!online && <p role="alert">You’re offline. Reconnect before confirming your meeting point.</p>}
     {locked && <p role="status">Your checkout is in progress. Finish or cancel it before changing the meeting point.</p>}
     <div className="pin-confirm-bar"><button className="back" onClick={() => setView("shop")}>Back to bag</button><button className="primary" disabled={!valid || !ready || !online || locked} onClick={confirm}>Confirm meeting point →</button></div>
-    <details className="map-help"><summary>How delivery locations work</summary><p>Pins must be within {CORRIDOR_METERS} m of a highlighted path. Your exact confirmed point is saved with checkout. Store markers and routes are for the demo; real robot navigation and tracking are not connected.</p></details>
+    <details className="map-help"><summary>How delivery locations work</summary><p>Pins must be within {CORRIDOR_METERS} m of a highlighted path. Your exact confirmed point is saved with checkout. Removing a pin clears the current meeting point, not previous orders or device location permission. Store markers and routes are for the demo; real robot navigation and tracking are not connected.</p></details>
   </section>;
 }
