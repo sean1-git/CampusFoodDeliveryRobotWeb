@@ -2,9 +2,8 @@
 
 A shopping PWA for UC Merced. Students shop at The Summit's Marketplace and Bobcat's Snack Shop, choose a campus meeting point, and follow a simulated robot delivery.
 
-[![Cloud Run deployment](https://github.com/sean1-git/uc-merced-campus-store/actions/workflows/deployment-status.yml/badge.svg?branch=main)](https://github.com/sean1-git/uc-merced-campus-store/actions/workflows/deployment-status.yml)
 
-[Try the demo](https://projectdemo-qf2f7jkpma-ew.a.run.app/) · [Deployment history](https://github.com/sean1-git/uc-merced-campus-store/deployments)
+[Try the demo](https://projectdemo-qf2f7jkpma-ew.a.run.app/) 
 
 The demo uses sample inventory and a $50 wallet. School sign-in, real payments, and physical robots are not connected.
 
