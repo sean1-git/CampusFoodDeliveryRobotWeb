@@ -30,6 +30,17 @@ dist-ssr
 !.env.example
 .sites-runtime/
 
+# Private keys and downloaded cloud credentials
+*.pem
+*.key
+*.pfx
+credentials*.json
+service-account*.json
+service_account*.json
+application_default_credentials.json
+.npmrc
+.pypirc
+
 # Native signing credentials, local SDK paths and generated output
 *.jks
 *.keystore

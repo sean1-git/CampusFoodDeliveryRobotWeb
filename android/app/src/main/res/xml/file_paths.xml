@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <!-- The app has no uploads or photo sharing. Any future sharing feature must
+         explicitly copy intended files here instead of exposing entire roots. -->
+    <cache-path name="shared_files" path="shared/" />
 </paths>

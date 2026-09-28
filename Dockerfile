@@ -27,6 +27,11 @@ COPY --from=builder /app/shared ./shared
 COPY drizzle/*.sql ./drizzle/
 COPY --from=builder /app/package.json ./
 
+# Only the demo database directory is writable by the runtime process. Source,
+# migrations, and bundled assets stay root-owned and readable by the node user.
+RUN mkdir -p /app/.data && chown node:node /app/.data
+USER node
+
 ENV NODE_ENV=production
 ENV PORT=8080
 ENV HOST=0.0.0.0

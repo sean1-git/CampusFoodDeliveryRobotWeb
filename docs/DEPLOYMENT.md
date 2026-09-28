@@ -9,6 +9,11 @@ build. Original artwork, build dependencies, tests, and documentation stay out
 of the runtime image. Explicit build inputs also let backend-only changes reuse
 the frontend build cache.
 
+The runtime uses the unprivileged `node` user. Application files remain root-owned;
+the local `.data` directory is writable for SQLite. Credentials stay outside the
+image in runtime configuration. See [Security](../SECURITY.md) for key restrictions
+and the demo's per-process abuse limits.
+
 This suits the demo's fixed images and makes each release self-contained. Docker
 does not make image downloads smaller; the existing optimized assets, compression,
 and PWA cache handle that. Future uploads and frequently changing product photos

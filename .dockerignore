@@ -11,6 +11,20 @@ dist-ssr
 .env.*
 !.env.example
 
+**/*.pem
+**/*.key
+**/*.pfx
+**/*.p12
+**/*.jks
+**/*.keystore
+**/credentials*.json
+**/service-account*.json
+**/service_account*.json
+**/application_default_credentials.json
+**/.npmrc
+**/.pypirc
+.gitleaks.toml
+
 android
 ios
 assets/native

@@ -1,0 +1,13 @@
+title = "Campus Store secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Public localStorage identifier, not an authentication key"
+condition = "AND"
+paths = ['''(^|/)src/lib/inventoryCache\.ts$''']
+regexTarget = "secret"
+regexes = ['''^campus-inventory-v1$''']

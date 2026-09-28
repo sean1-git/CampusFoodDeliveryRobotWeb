@@ -233,7 +233,7 @@ export function useCampusStore() {
     let active = true;
     setBooting(true);
     void refresh(false).then(() => { if (active) { setError(""); void reconcileHold(); } })
-      .catch((failure: ApiError) => { if (active) setError(failure.status === 401 ? failure.message
+      .catch((failure: ApiError) => { if (active) setError(failure.status === 401 || failure.status === 429 ? failure.message
         : "The server is unavailable. Your saved inventory and bag remain available offline."); })
       .finally(() => { if (active) setBooting(false); });
     return () => { active = false; };
@@ -415,7 +415,7 @@ export function useCampusStore() {
     setBooting(true);
     try { await refresh(); await refreshInventory(true); await reconcileHold(); setError(""); }
     catch (failure) { const problem = failure as ApiError;
-      setError(problem.status === 401 ? problem.message : "Still unable to reach the server. Saved inventory remains available."); }
+      setError(problem.status === 401 || problem.status === 429 ? problem.message : "Still unable to reach the server. Saved inventory remains available."); }
     finally { setBooting(false); }
   }
 

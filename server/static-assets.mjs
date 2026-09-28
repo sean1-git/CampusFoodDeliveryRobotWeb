@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 
 // Cache only public static bytes, with a fixed memory budget. File metadata
@@ -7,30 +7,39 @@ const files = new Map();
 const etags = new WeakMap();
 const MAX_BYTES = 8 * 1024 * 1024;
 let cachedBytes = 0;
+const fileVersion = metadata => `${metadata.dev}:${metadata.ino}:${metadata.size}:${metadata.mtimeMs}:${metadata.ctimeMs}`;
 function readStaticFile(file) {
-  const metadata = statSync(file);
-  const version = `${metadata.size}:${metadata.mtimeMs}:${metadata.ctimeMs}`;
-  const previous = files.get(file);
-  if (previous?.version === version) {
-    files.delete(file);
-    files.set(file, previous);
-    return previous.body;
-  }
-  if (previous) {
-    cachedBytes -= previous.body.length;
-    files.delete(file);
-  }
-  const body = readFileSync(file);
-  if (body.length <= MAX_BYTES) {
-    while (files.size >= 128 || cachedBytes + body.length > MAX_BYTES) {
-      const oldest = files.keys().next().value;
-      cachedBytes -= files.get(oldest).body.length;
-      files.delete(oldest);
+  // Open first, then inspect and read that exact descriptor. A path replaced
+  // between metadata inspection and reading cannot substitute different bytes.
+  const descriptor = openSync(file, "r");
+  try {
+    const metadata = fstatSync(descriptor);
+    if (!metadata.isFile()) throw Object.assign(new Error("Static asset is not a regular file."), { code: "EISDIR" });
+    const version = fileVersion(metadata);
+    const previous = files.get(file);
+    if (previous?.version === version) {
+      files.delete(file);
+      files.set(file, previous);
+      return previous.body;
     }
-    files.set(file, { version, body });
-    cachedBytes += body.length;
-  }
-  return body;
+    if (previous) {
+      cachedBytes -= previous.body.length;
+      files.delete(file);
+    }
+    const body = readFileSync(descriptor);
+    // Development tools may edit an open file in place. Do not retain bytes
+    // under metadata that changed during the read.
+    if (body.length <= MAX_BYTES && fileVersion(fstatSync(descriptor)) === version) {
+      while (files.size >= 128 || cachedBytes + body.length > MAX_BYTES) {
+        const oldest = files.keys().next().value;
+        cachedBytes -= files.get(oldest).body.length;
+        files.delete(oldest);
+      }
+      files.set(file, { version, body });
+      cachedBytes += body.length;
+    }
+    return body;
+  } finally { closeSync(descriptor); }
 }
 
 // Honor explicit q=0 exclusions and prefer Brotli when quality values tie.
@@ -48,9 +57,15 @@ export function staticBody(file, acceptEncoding, headers) {
   headers.Vary = "Accept-Encoding";
   for (const encoding of acceptedEncodings(acceptEncoding)) {
     const compressed = file + (encoding === "br" ? ".br" : ".gz");
-    if (!existsSync(compressed)) continue;
-    headers["Content-Encoding"] = encoding;
-    return readStaticFile(compressed);
+    try {
+      const body = readStaticFile(compressed);
+      headers["Content-Encoding"] = encoding;
+      return body;
+    } catch (error) {
+      // A missing/removed precompressed sibling is normal; access/read errors
+      // must not be disguised as successful compression negotiation.
+      if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+    }
   }
   return readStaticFile(file);
 }

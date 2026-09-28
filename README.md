@@ -82,3 +82,4 @@ The demo runs one Cloud Run instance with local SQLite; container replacement re
 - [Native setup](NATIVE.md): Android/iOS development, testing, and signing requirements.
 - [Dependencies](docs/DEPENDENCIES.md): runtime packaging and tooling maintenance.
 - [Deployment](docs/DEPLOYMENT.md): Cloud Run releases and GitHub deployment reporting.
+- [Security](SECURITY.md): credential handling, automated checks, and demo limits.

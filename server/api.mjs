@@ -7,6 +7,7 @@ import { publicOrder, createDemoOrder, checkoutResult, reservationAction } from 
 import { ensureInventory, inventoryRecords } from "./inventory.mjs";
 import { authenticatedSession, issueDemoSession } from "./auth.mjs";
 import { canonicalOrigin } from "./origin.mjs";
+import { rateLimiterFor } from "./rate-limit.mjs";
 export { secureResponse } from "./http.mjs";
 import catalog from "../shared/catalog.json" with { type: "json" };
 
@@ -17,6 +18,9 @@ const configuredOrigins = (env) =>
     .filter(Boolean);
 const validId = (value) =>
   typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
+const rateLimited = (retryAfter, action) => json({ code: "rate_limited",
+  error: `Too many new ${action}. Please wait ${retryAfter} seconds before trying again. Existing checkout recovery remains available.`,
+}, 429, { "Retry-After": String(retryAfter) });
 // This handler deliberately supports demo mode only. Real integration adapters
 // must be implemented and reviewed before any actual charge or robot dispatch.
 async function accountOrders(db, accountId, now) {
@@ -82,6 +86,8 @@ export async function handleApi(request, env, now = Date.now()) {
         || (request.headers.has("origin") && !allowed.has(request.headers.get("origin")))) {
         return json({ error: "Request origin is not allowed." }, 403);
       }
+      const retryAfter = rateLimiterFor(db).session();
+      if (retryAfter) return rateLimited(retryAfter, "demo sessions");
       session = await issueDemoSession(db, now, env.NODE_ENV === "production" || url.protocol === "https:");
       sessionCookie = session.cookie;
     }
@@ -111,6 +117,21 @@ export async function handleApi(request, env, now = Date.now()) {
       } catch { console.error("Order update notification failed."); }
       return response;
     }
+    async function createCheckout(kind = "purchase") {
+      const key = request.headers.get("idempotency-key");
+      if (request.headers.get("x-csrf-token") === session.csrf && validId(key)) {
+        // Retry an existing checkout without spending its creation allowance.
+        // The order handler still validates its fingerprint and account owner.
+        const existing = await db.prepare(`SELECT 1 FROM orders WHERE account_id = ? AND request_key = ?
+          UNION ALL SELECT 1 FROM checkout_queue WHERE account_id = ? AND request_key = ? LIMIT 1`)
+          .bind(session.account_id, key, session.account_id, key).first();
+        if (!existing) {
+          const retryAfter = rateLimiterFor(db).checkout(session.account_id, key);
+          if (retryAfter) return rateLimited(retryAfter, "checkout attempts");
+        }
+      }
+      return checkoutWithEvents(() => createDemoOrder(request, db, session, now, kind));
+    }
     if (url.pathname === "/api/session" && request.method === "GET") {
       const spent = await db
         .prepare(
@@ -139,7 +160,7 @@ export async function handleApi(request, env, now = Date.now()) {
       );
     }
     if (url.pathname === "/api/reservations" && request.method === "POST") {
-      return await checkoutWithEvents(() => createDemoOrder(request, db, session, now, "reservation"));
+      return await createCheckout("reservation");
     }
     const reservationPath = /^\/api\/reservations\/([0-9a-f-]{36})\/(confirm|cancel)$/i.exec(url.pathname);
     if (reservationPath && request.method === "POST") {
@@ -165,7 +186,7 @@ export async function handleApi(request, env, now = Date.now()) {
     }
     if (url.pathname !== "/api/orders" || request.method !== "POST")
       return json({ error: "Not found." }, 404);
-    return await checkoutWithEvents(() => createDemoOrder(request, db, session, now));
+    return await createCheckout();
   } catch (error) {
     if (["JSON_REQUIRED", "INVALID_JSON", "TOO_LARGE"].includes(error.message))
       return json(
