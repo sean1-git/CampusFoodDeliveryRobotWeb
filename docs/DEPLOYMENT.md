@@ -1,4 +1,22 @@
-# Deployment reporting
+# Deployment
+
+## Docker packaging
+
+The Dockerfile builds the frontend, then copies its output and the Node API into a
+runtime image. Shop photos and other files in `public/` are included in
+`dist/client`; `assets/app-logo.png` generates the smaller app icons during the
+build. Original artwork, build dependencies, tests, and documentation stay out
+of the runtime image. Explicit build inputs also let backend-only changes reuse
+the frontend build cache.
+
+This suits the demo's fixed images and makes each release self-contained. Docker
+does not make image downloads smaller; the existing optimized assets, compression,
+and PWA cache handle that. Future uploads and frequently changing product photos
+should use object storage, optionally behind a CDN, so they can change without
+rebuilding the app. Files written inside a Cloud Run container are
+[temporary](https://docs.cloud.google.com/run/docs/container-contract#file_system).
+
+## Deployment reporting
 
 Google Cloud Build builds this repository and deploys Cloud Run. The GitHub workflow
 `deployment-status.yml` only records that existing result in the `Production`

@@ -2,6 +2,7 @@
 
 A shopping PWA for UC Merced. Students shop at The Summit's Marketplace and Bobcat's Snack Shop, choose a campus meeting point, and follow a simulated robot delivery.
 
+I built this so students wouldn't have to walk across campus just to find out whether a store has what they need. The idea is to check availability with a tap, buy an item, and have it delivered to their campus meeting point.
 
 [Try the demo](https://projectdemo-qf2f7jkpma-ew.a.run.app/) 
 
@@ -30,6 +31,7 @@ The demo uses sample inventory and a $50 wallet. School sign-in, real payments, 
 - **PWA:** cached assets reduce repeat downloads and help returning visits load faster. The bag and latest catalog remain available offline; checkout needs a connection.
 - **React and TypeScript:** reusable components and typed state keep the UI maintainable. Lazy-loaded maps, Brotli/gzip compression, and reused calculations reduce loading and browser work.
 - **SQLite:** simple demo setup with transactional stock updates. FIFO checkout and idempotency keys protect against overselling and duplicate charges.
+- **Docker:** packages the API, built frontend, shop photos, and icons into one consistent Cloud Run release. A [multi-stage build](https://docs.docker.com/build/building/multi-stage/) keeps build tools and original artwork out of the runtime image.
 
 ## Project structure
 
@@ -70,7 +72,7 @@ The demo runs one Cloud Run instance with local SQLite; container replacement re
 
 1. **Shared database:** move to [Cloud SQL for PostgreSQL](https://docs.cloud.google.com/sql/docs/postgres/connect-run) with connection pooling. Adapt SQLite transactions and triggers, then load-test checkout before adding API instances.
 2. **Background jobs:** use [Cloud Tasks](https://docs.cloud.google.com/run/docs/triggering/using-tasks) for inventory sync and future robot dispatch, with idempotent retries and database-controlled stock allocation.
-3. **Less server traffic:** add a CDN and event-driven delivery updates. Keep account responses private and verify stock at checkout; measure latency and contention before increasing capacity.
+3. **Less server traffic:** add a CDN and event-driven delivery updates. Store future uploads and frequently changing product photos in object storage. Keep account responses private and verify stock at checkout; measure latency and contention before increasing capacity.
 
 ## Documentation
 
