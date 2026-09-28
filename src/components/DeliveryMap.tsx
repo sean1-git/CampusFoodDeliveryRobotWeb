@@ -29,6 +29,7 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
   useEffect(() => { handlers.current = { onPick, onReady }; }, [onPick, onReady]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
+  const editable = !!onPick;
   useEffect(() => {
     let active = true;
     const authError = () => { if (active) { setError("Google Maps authorization failed. Reload after map configuration is restored."); setReady(false); handlers.current.onReady?.(false); } };
@@ -48,8 +49,16 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
       overlays.push(new google.maps.Polygon({ map, paths: campusBoundary, strokeColor: "#607a98",
         strokeOpacity: 0.35, strokeWeight: 1, fillOpacity: 0, clickable: false }));
       // One overlay per mapped path keeps the full campus network inexpensive to draw.
-      walkwayPaths.forEach(path => overlays.push(new google.maps.Polyline({ map, path: path.points,
-        strokeColor: "#19817b", strokeOpacity: 0.55, strokeWeight: 6, clickable: false })));
+      let walkwayWeight = (map.getZoom() ?? 15) >= 17 ? 5 : 3;
+      const walkwayLines = walkwayPaths.map(path => new google.maps.Polyline({ map, path: path.points,
+        strokeColor: "#19817b", strokeOpacity: 0.55, strokeWeight: walkwayWeight, zIndex: 1, clickable: false }));
+      overlays.push(...walkwayLines);
+      listeners.push(map.addListener("zoom_changed", () => {
+        const nextWeight = (map.getZoom() ?? 15) >= 17 ? 5 : 3;
+        if (nextWeight === walkwayWeight) return;
+        walkwayWeight = nextWeight;
+        walkwayLines.forEach(line => line.setOptions({ strokeWeight: walkwayWeight }));
+      }));
 
       pickupStores.forEach(store => {
         const tag = document.createElement("span"); tag.className = "map-store-marker map-store-photo-marker";
@@ -66,7 +75,7 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
       content.src = "/delivery-robot.svg"; content.alt = "Simulated delivery robot";
       content.width = 60; content.height = 48;
       robotRef.current = new google.maps.marker.AdvancedMarkerElement({ map, title: "Simulated robot", content });
-      lineRef.current = new google.maps.Polyline({ map, strokeColor: "#174b42", strokeWeight: 5, clickable: false });
+      lineRef.current = new google.maps.Polyline({ map, strokeColor: "#244bd7", strokeWeight: 5, zIndex: 2, clickable: false });
       listeners.push(map.addListener("click", (event: google.maps.MapMouseEvent) => { if (event.latLng) handlers.current.onPick?.(event.latLng.toJSON()); }));
       listeners.push(marker.addListener("dragend", () => { const p = marker.position; if (p) handlers.current.onPick?.({ lat: typeof p.lat === "function" ? p.lat() : p.lat, lng: typeof p.lng === "function" ? p.lng() : p.lng }); }));
       setReady(true); handlers.current.onReady?.(true);
@@ -89,7 +98,11 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
   
     lineRef.current?.setPath(route?.points ?? []);
   }, [ready, pin, route, onPick]);
-  useEffect(() => { if (ready && pin) mapRef.current?.panTo(pin); }, [ready, pin]);
+  useEffect(() => {
+    if (!ready || !pin || !editable || !mapRef.current) return;
+    mapRef.current.panTo(pin);
+    mapRef.current.setZoom(Math.max(18, mapRef.current.getZoom() ?? 18));
+  }, [ready, pin, editable]);
   useEffect(() => { if (ready && robotRef.current) robotRef.current.position = robot ?? null; }, [ready, robot]);
   function showCampus() {
     mapRef.current?.fitBounds(campusMapBounds(), 40);
