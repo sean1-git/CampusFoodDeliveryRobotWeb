@@ -5,6 +5,11 @@ Google Cloud Build builds this repository and deploys Cloud Run. The GitHub work
 environment, with a link to the app and Google's build log. It does not deploy a
 second copy or need Google Cloud credentials.
 
+View the public [deployment reports](https://github.com/sean1-git/uc-merced-campus-store/actions/workflows/deployment-status.yml)
+or the [Production history](https://github.com/sean1-git/uc-merced-campus-store/deployments/activity_log?environments_filter=Production).
+GitHub may require sign-in to view its deployment history; the reports and live app
+remain accessible without signing in.
+
 The observer runs on pushes to `main` and through **Actions → Report Cloud Run
 deployment → Run workflow**. It waits up to 15 minutes for the exact commit's
 `cloudrun-projectdemo-europe-west1-sean1-git-CampusFoodDelivecnv (projectdemo-509505)`
