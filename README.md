@@ -1,4 +1,4 @@
-# UC Merced Campus Store
+# UC Merced Campus Store for R&D Lab
 
 A shopping PWA for UC Merced. Students shop at The Summit's Marketplace and Bobcat's Snack Shop, choose a campus meeting point, and follow a simulated robot delivery.
 
