@@ -165,8 +165,8 @@ export const GoogleDeliveryMap = memo(function GoogleDeliveryMap({ pin, onPick, 
   }, [ready, routePoints]);
   useEffect(() => {
     if (!ready || pinLat == null || pinLng == null || !editable || !mapRef.current) return;
-    mapRef.current.panTo({ lat: pinLat, lng: pinLng });
-    mapRef.current.setZoom(Math.max(18, mapRef.current.getZoom() ?? 18));
+    // Apply center and zoom together: setZoom can cancel an in-flight panTo.
+    mapRef.current.moveCamera({ center: { lat: pinLat, lng: pinLng }, zoom: Math.max(18, mapRef.current.getZoom() ?? 18) });
   }, [ready, pinLat, pinLng, editable]);
   useEffect(() => {
     if (ready && robotRef.current) robotRef.current.position = robotLat == null || robotLng == null ? null : { lat: robotLat, lng: robotLng };
@@ -177,13 +177,12 @@ export const GoogleDeliveryMap = memo(function GoogleDeliveryMap({ pin, onPick, 
   function showStore(store: typeof visibleStores[number]) {
     // Shop shortcuts only move the camera; the customer still chooses their own pin.
     setSelected(store.id);
-    mapRef.current?.panTo(campusStops[store.node]);
-    mapRef.current?.setZoom(18);
+    mapRef.current?.moveCamera({ center: campusStops[store.node], zoom: 18 });
   }
   function showPoint(kind: "destination" | "robot") {
     setSelected(kind);
     const point = kind === "robot" ? robot : pin;
-    if (point) { mapRef.current?.panTo(point); mapRef.current?.setZoom(19); }
+    if (point) mapRef.current?.moveCamera({ center: point, zoom: 19 });
   }
   const selectedStore = visibleStores.find(store => store.id === selected);
   const selectedKind = selectedStore ? "pickup" : selected === "robot" && robot ? "robot" : "destination";
