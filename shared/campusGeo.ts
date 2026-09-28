@@ -1,198 +1,218 @@
-// Customer pin corridors and a separate demo-only travel network.
-// Replace this versioned network with surveyed sidewalk geometry before real dispatch.
+// Versioned pedestrian geometry is shared by the lazy map and authoritative checkout.
+import data from "./campusWalkways.json" with { type: "json" };
 import { storeName } from "./stores.ts";
-export type Coordinate = { lat: number; lng: number };
-export type DeliveryPin = Coordinate & { confirmed: true };
-export type GeoRoute = { version: string; destination: DeliveryPin; label: string; points: Coordinate[]; meters: number; seconds: number; pickups?: { id: string; name: string; arrivalSeconds?: number; departureSeconds?: number; items?: { name: string; quantity: number }[] }[]; journey?: { points: Coordinate[]; seconds: number; startsAtSeconds: number }[] };
-// Pickup anchors stay independent of the customer meeting corridors.
-export const campusStops = [
-  { id: "summit-pickup", label: "Summit demo pickup", lat: 37.363352, lng: -120.429973 },
-  { id: "scholars-west", label: "Scholars Lane · west", lat: 37.363323, lng: -120.430034 },
-  { id: "scholars-bend", label: "Scholars Lane · bend", lat: 37.363322, lng: -120.428197 },
-  { id: "bobcat-pickup", label: "Bobcat demo pickup", lat: 37.366145, lng: -120.424243 },
-  { id: "scholars-turn", label: "Scholars Lane · turn", lat: 37.363441, lng: -120.427897 },
-  { id: "scholars-mid", label: "Scholars Lane · central", lat: 37.364781, lng: -120.426052 },
-  { id: "scholars-east", label: "Scholars Lane · east", lat: 37.365562, lng: -120.424938 },
-  { id: "mammoth-north", label: "Mammoth Lakes Road · north", lat: 37.364389, lng: -120.429165 },
-  { id: "mammoth-south", label: "Mammoth Lakes Road · south", lat: 37.363468, lng: -120.429144 },
-  { id: "university-north", label: "University Avenue · north", lat: 37.363311, lng: -120.427830 },
-  { id: "university-south", label: "University Avenue · south", lat: 37.362057, lng: -120.427846 },
-  { id: "campus-path-a", label: "Campus path · A", lat: 37.364686, lng: -120.425946 },
-  { id: "campus-path-b", label: "Campus path · B", lat: 37.364619, lng: -120.425728 },
-  { id: "campus-path-c", label: "Campus path · C", lat: 37.364875, lng: -120.425243 },
-  { id: "campus-path-d", label: "Campus path · D", lat: 37.363986, lng: -120.424203 },
-  { id: "campus-path-e", label: "Campus path · E", lat: 37.362097, lng: -120.426773 },
-  { id: "campus-path-f", label: "Campus path · F", lat: 37.362011, lng: -120.427735 },
-  { id: "northwest-path-start", label: "Northwest path · start", lat: 37.364892, lng: -120.426174 },
-  { id: "northwest-path-end", label: "Northwest path · end", lat: 37.365574, lng: -120.426975 },
-  { id: "northeast-path-start", label: "Northeast path · start", lat: 37.365833, lng: -120.424637 },
-  { id: "northeast-path-end", label: "Northeast path · end", lat: 37.367130, lng: -120.422809 },
-  { id: "northeast-link-start", label: "Northeast link · start", lat: 37.365636, lng: -120.424880 },
-  { id: "northeast-link-end", label: "Northeast link · end", lat: 37.365822, lng: -120.424660 },
-  { id: "east-spur-start", label: "East path · start", lat: 37.364022, lng: -120.424149 },
-  { id: "east-spur-end", label: "East path · end", lat: 37.364672, lng: -120.423743 },
-];
-export const pinCorridors = [
-  { name: "Scholars Lane", edges: [[1, 2], [2, 4], [4, 5], [5, 6]] },
-  { name: "Mammoth Lakes Road", edges: [[7, 8]] },
-  { name: "University Avenue", edges: [[9, 10]] },
-  { name: "Northeast link", edges: [[21, 22]] },
-  { name: "East campus path", edges: [[23, 24]] },
-  { name: "Northwest campus path", edges: [[17, 18]] },
-  { name: "Northeast campus path", edges: [[19, 20]] },
-  { name: "Campus path", edges: [[11, 12], [12, 13], [13, 14], [14, 15], [15, 16]] },
-];
-export const pinEdges = pinCorridors.flatMap(c => c.edges);
-// These connectors are animation estimates only, not robot navigation instructions.
-export const geoEdges = [...pinEdges, [0, 1], [3, 6], [8, 2], [9, 4], [5, 11], [16, 10], [5, 17], [6, 21], [22, 19], [3, 19], [14, 23]];
-// Only customer corridors authorize a meeting point; animation connectors never do.
-export function deliveryArea(value: unknown) {
-  if (!coordinate(value)) return null;
-  const nearest = pinCorridors.flatMap(c => c.edges.map(([a, b]) => ({
-    name: c.name, offset: distance(value, project(value, campusStops[a], campusStops[b]))
-  }))).sort((a, b) => a.offset - b.offset)[0];
-  return nearest.offset <= CORRIDOR_METERS ? nearest.name : null;
-}
-export const GEO_PREPARATION_MS = 20000;
-export const PICKUP_SECONDS = 5;
+import { coordinate, distance, PICKUP_SECONDS, ROBOT_METERS_PER_SECOND } from "./deliveryRoute.ts";
+import type { Coordinate, DeliveryPin, GeoRoute } from "./deliveryRoute.ts";
+export * from "./deliveryRoute.ts";
+
 export const CORRIDOR_METERS = 8;
-export const ROBOT_METERS_PER_SECOND = 1;
+export const SNAP_METERS = 25;
+export const campusBoundary: Coordinate[] = data.boundary.map(([lat, lng]) => ({ lat, lng }));
+const anchors = [
+  { id: "summit-pickup", label: "Summit demo pickup", lat: 37.363352, lng: -120.429973 },
+  { id: "bobcat-pickup", label: "Bobcat demo pickup", lat: 37.366145, lng: -120.424243 },
+];
 export const pickupStores = [
   { id: "library", name: storeName("library"), node: 3 },
   { id: "summits", name: storeName("summits"), node: 0 },
 ];
-export function distance(a: Coordinate, b: Coordinate): number {
-  const rad = Math.PI / 180;
-  const h = Math.sin((b.lat - a.lat) * rad / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin((b.lng - a.lng) * rad / 2) ** 2;
-  return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(Math.max(0, 1 - h)));
+export function insideCampus(value: unknown): value is Coordinate {
+  if (!coordinate(value)) return false;
+  let inside = false;
+  for (let i = 0, j = campusBoundary.length - 1; i < campusBoundary.length; j = i++) {
+    const a = campusBoundary[j], b = campusBoundary[i];
+    if (distance(value, project(value, a, b)) < 0.01) return true;
+    if ((a.lat > value.lat) !== (b.lat > value.lat) && value.lng <
+      (b.lng - a.lng) * (value.lat - a.lat) / (b.lat - a.lat) + a.lng) inside = !inside;
+  }
+  return inside;
 }
-export function coordinate(value: unknown): value is Coordinate {
-  const p = value as Coordinate | null;
-  return !!p && typeof p.lat === "number" && typeof p.lng === "number" && Number.isFinite(p.lat) && Number.isFinite(p.lng)
-    && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180;
-}
-function project(p: Coordinate, a: Coordinate, b: Coordinate) {
+function project(p: Coordinate, a: Coordinate, b: Coordinate): Coordinate {
   const scale = Math.cos(a.lat * Math.PI / 180);
-  const x = (b.lng - a.lng) * scale, y = b.lat - a.lat;
-  const t = Math.max(0, Math.min(1, (((p.lng - a.lng) * scale) * x + (p.lat - a.lat) * y) / (x * x + y * y)));
+  const x = (b.lng - a.lng) * scale, y = b.lat - a.lat, squared = x * x + y * y;
+  const t = squared ? Math.max(0, Math.min(1, (((p.lng - a.lng) * scale) * x + (p.lat - a.lat) * y) / squared)) : 0;
   return { lat: a.lat + t * y, lng: a.lng + t * (b.lng - a.lng) };
 }
-// Dijkstra runs on the small demo graph. Costs remain unrounded until the final ETA.
-function shortestPath(nodes: Coordinate[], edges: number[][], start: number, destination: number) {
-  const costs = nodes.map(() => Infinity), previous = nodes.map(() => -1), visited = new Set<number>();
-  costs[start] = 0;
-  while (visited.size < nodes.length) {
-    let current = -1;
-    nodes.forEach((_, i) => { if (!visited.has(i) && (current === -1 || costs[i] < costs[current])) current = i; });
-    if (current === -1 || !Number.isFinite(costs[current])) return null;
-    if (current === destination) break;
-    visited.add(current);
-    for (const [a, b] of edges) {
-      const next = a === current ? b : b === current ? a : -1;
-      if (next < 0 || visited.has(next)) continue;
-      const cost = costs[current] + distance(nodes[current], nodes[next]) / ROBOT_METERS_PER_SECOND;
-      if (cost < costs[next]) { costs[next] = cost; previous[next] = current; }
+type Segment = { a: number; b: number; name: string; available: boolean };
+function nearestSegment(value: Coordinate, segments: Segment[], nodes: Coordinate[]) {
+  let best: (Segment & { point: Coordinate; offsetMeters: number }) | null = null;
+  for (const segment of segments) {
+    const point = project(value, nodes[segment.a], nodes[segment.b]);
+    const offsetMeters = distance(value, point);
+    if (!best || offsetMeters < best.offsetMeters) best = { ...segment, point, offsetMeters };
+  }
+  return best;
+}
+const edgeKey = (a: number, b: number) => `${Math.min(a, b)}:${Math.max(a, b)}`;
+const pathLabel = (name: string) => name === "Scholar's Lane" ? "Scholars Lane" : name;
+const names = new Map<string, string>();
+for (const path of data.paths) for (let i = 1; i < path.nodes.length; i++) {
+  const key = edgeKey(path.nodes[i - 1], path.nodes[i]);
+  if (!names.has(key) || path.name !== "Campus walkway") names.set(key, pathLabel(path.name));
+}
+const rawSegments = data.edges.map(([a, b]) => ({ a, b, name: names.get(edgeKey(a, b)) ?? "Campus walkway", available: true }));
+const storeEntries = anchors.map(anchor => nearestSegment(anchor, rawSegments, data.nodes)!);
+const rawNeighbors: number[][] = data.nodes.map(() => []);
+for (const [a, b] of data.edges) { rawNeighbors[a].push(b); rawNeighbors[b].push(a); }
+const connected = new Set<number>([storeEntries[0].a]);
+const queue = [...connected];
+for (let i = 0; i < queue.length; i++) for (const next of rawNeighbors[queue[i]]) {
+  if (!connected.has(next)) { connected.add(next); queue.push(next); }
+}
+// Never invent links between nearby disconnected paths. The only off-path links
+// are short simulated access legs to the two user-supplied store pickup anchors.
+const storesConnected = storeEntries.every(entry => entry.offsetMeters <= CORRIDOR_METERS && connected.has(entry.a));
+export const campusStops = [
+  anchors[0], { id: "summit-entry", label: "Summit walkway", ...storeEntries[0].point },
+  { id: "bobcat-entry", label: "Bobcat walkway", ...storeEntries[1].point }, anchors[1],
+  ...data.nodes.map(node => ({ ...node, label: "Campus walkway" })),
+];
+const segments: Segment[] = [];
+for (const raw of rawSegments) {
+  const available = storesConnected && connected.has(raw.a);
+  const splits = storeEntries.flatMap((entry, index) => edgeKey(entry.a, entry.b) === edgeKey(raw.a, raw.b)
+    ? [{ node: index === 0 ? 1 : 2, meters: distance(data.nodes[raw.a], entry.point) }] : []);
+  const nodes = [raw.a + 4, ...splits.sort((a, b) => a.meters - b.meters).map(s => s.node), raw.b + 4];
+  for (let i = 1; i < nodes.length; i++) segments.push({ a: nodes[i - 1], b: nodes[i], name: raw.name, available });
+}
+export const pinEdges = segments.filter(s => s.available).map(({ a, b }) => [a, b]);
+export const geoEdges = storesConnected ? [...pinEdges, [0, 1], [3, 2]] : [];
+export const walkwayPaths = data.paths.filter(path => storesConnected && path.nodes.every(node => connected.has(node)))
+  .map(path => ({ id: path.id, name: pathLabel(path.name), points: path.nodes.map(node => ({ lat: data.nodes[node].lat, lng: data.nodes[node].lng })) }));
+export const walkwayMetadata = { ...data.metadata, availablePathCount: walkwayPaths.length,
+  availableEdgeCount: pinEdges.length, availableNodeCount: connected.size, fetchedAt: data.metadata.snapshotDate };
+export const pinCorridors = [...new Set(segments.filter(s => s.available).map(s => s.name))].map(name => ({
+  name, edges: segments.filter(s => s.available && s.name === name).map(({ a, b }) => [a, b]),
+}));
+// A short keyboard-accessible list complements clicking any highlighted path.
+export const walkwayChoices = pinCorridors.filter(c => c.name !== "Campus walkway").map(c => {
+  const [a, b] = c.edges[Math.floor(c.edges.length / 2)];
+  return { id: c.name, label: c.name, lat: (campusStops[a].lat + campusStops[b].lat) / 2,
+    lng: (campusStops[a].lng + campusStops[b].lng) / 2 };
+}).sort((a, b) => a.label.localeCompare(b.label));
+function locatePin(value: unknown, tolerance: number) {
+  if (!insideCampus(value)) return null;
+  const nearest = nearestSegment(value, segments, campusStops);
+  // Isolated walkways cannot silently snap across gaps to a different component.
+  return nearest?.available && nearest.offsetMeters <= tolerance ? nearest : null;
+}
+export function snapDeliveryPin(value: unknown) {
+  const nearest = locatePin(value, SNAP_METERS);
+  return nearest ? { point: nearest.point, label: nearest.name, offsetMeters: nearest.offsetMeters } : null;
+}
+export function deliveryArea(value: unknown) { return locatePin(value, CORRIDOR_METERS)?.name ?? null; }
+
+const adjacency: { node: number; meters: number }[][] = campusStops.map(() => []);
+for (const [a, b] of geoEdges) {
+  const meters = distance(campusStops[a], campusStops[b]);
+  adjacency[a].push({ node: b, meters }); adjacency[b].push({ node: a, meters });
+}
+type SearchTree = { costs: number[]; previous: number[] };
+const storeTrees = new Map<number, SearchTree>();
+// Binary-heap Dijkstra runs once per store. On-edge destinations reuse its tree.
+function searchFrom(start: number): SearchTree {
+  const cached = storeTrees.get(start);
+  if (cached) return cached;
+  const costs = campusStops.map(() => Infinity), previous = campusStops.map(() => -1);
+  const heap: { node: number; cost: number }[] = [];
+  function push(entry: { node: number; cost: number }) {
+    let index = heap.length; heap.push(entry);
+    while (index > 0) {
+      const parent = (index - 1) >> 1;
+      if (heap[parent].cost <= entry.cost) break;
+      heap[index] = heap[parent]; index = parent;
+    }
+    heap[index] = entry;
+  }
+  function pop() {
+    const first = heap[0], tail = heap.pop()!;
+    if (heap.length) {
+      let index = 0;
+      while (2 * index + 1 < heap.length) {
+        let child = 2 * index + 1;
+        if (child + 1 < heap.length && heap[child + 1].cost < heap[child].cost) child++;
+        if (heap[child].cost >= tail.cost) break;
+        heap[index] = heap[child]; index = child;
+      }
+      heap[index] = tail;
+    }
+    return first;
+  }
+  costs[start] = 0; push({ node: start, cost: 0 });
+  while (heap.length) {
+    const { node, cost } = pop();
+    if (cost > costs[node]) continue;
+    for (const next of adjacency[node]) {
+      const candidate = cost + next.meters;
+      if (candidate < costs[next.node]) {
+        costs[next.node] = candidate; previous[next.node] = node; push({ node: next.node, cost: candidate });
+      }
     }
   }
-  const indices = [destination];
-  while (indices[0] !== start) { const prev = previous[indices[0]]; if (prev < 0) return null; indices.unshift(prev); }
-  return { indices, seconds: costs[destination] };
+  const tree = { costs, previous };
+  if (start === 0 || start === 3) storeTrees.set(start, tree);
+  return tree;
 }
-
-// Dijkstra weights are expected travel seconds. The destination splits its nearest
-// edge; an exact selected pin is retained, never silently replaced by a landmark.
-function simulatedRoute(value: unknown, start = 0): GeoRoute | null {
-  if (!coordinate(value)) return null;
-  const nearest = geoEdges.map(([a, b]) => {
-    const point = project(value, campusStops[a], campusStops[b]);
-    return { a, b, point, offset: distance(value, point) };
-  }).sort((a, b) => a.offset - b.offset)[0];
-
-  // Split the closest edge, then retain the exact pin as a final short segment.
-  const nodes: Coordinate[] = [...campusStops, nearest.point, { lat: value.lat, lng: value.lng }];
-  const junction = campusStops.length, destination = junction + 1;
-  if (!Number.isInteger(start) || start < 0 || start >= campusStops.length) return null;
-  const edges: [number, number][] = geoEdges.filter(([a, b]) => a !== nearest.a || b !== nearest.b).map(([a, b]) => [a, b]);
-  edges.push([nearest.a, junction], [junction, nearest.b], [junction, destination]);
-  const path = shortestPath(nodes, edges, start, destination);
-  if (!path) return null;
-  const closest = [...campusStops].sort((a, b) => distance(value, a) - distance(value, b))[0];
-  return { version: "ucm-simulation-v6", destination: { lat: value.lat, lng: value.lng, confirmed: true },
-    label: deliveryArea(value) ?? closest.label, points: path.indices.map(i => ({ lat: nodes[i].lat, lng: nodes[i].lng })),
-    meters: Math.round(path.seconds * ROBOT_METERS_PER_SECOND), seconds: Math.ceil(path.seconds) };
+function pathTo(start: number, end: number, tree: SearchTree): Coordinate[] | null {
+  if (!Number.isFinite(tree.costs[end])) return null;
+  const indices = [end];
+  while (indices.at(-1) !== start) {
+    const prior = tree.previous[indices.at(-1)!];
+    if (prior < 0) return null;
+    indices.push(prior);
+  }
+  return indices.reverse().map(index => ({ lat: campusStops[index].lat, lng: campusStops[index].lng }));
+}
+function buildRoute(point: Coordinate, label: string, points: Coordinate[], meters: number): GeoRoute {
+  return { version: data.metadata.version, destination: { ...point, confirmed: true }, label, points,
+    meters: Math.round(meters), seconds: Math.ceil(meters / ROBOT_METERS_PER_SECOND) };
 }
 export function routeToPin(value: unknown, start = 0): GeoRoute | null {
-  return deliveryArea(value) ? simulatedRoute(value, start) : null;
+  if (!Number.isInteger(start) || start < 0 || start >= campusStops.length) return null;
+  const nearest = locatePin(value, CORRIDOR_METERS);
+  if (!nearest) return null;
+  const tree = searchFrom(start);
+  const costA = tree.costs[nearest.a] + distance(campusStops[nearest.a], nearest.point);
+  const costB = tree.costs[nearest.b] + distance(campusStops[nearest.b], nearest.point);
+  const end = costA <= costB ? nearest.a : nearest.b;
+  const points = pathTo(start, end, tree);
+  if (!points) return null;
+  points.push(nearest.point);
+  // The server also snaps; there is no customer-supplied final off-path spur.
+  return buildRoute(nearest.point, nearest.name, points, Math.min(costA, costB));
+}
+export function routeBetweenPickups(start: number, target: number): GeoRoute | null {
+  if (![0, 3].includes(start) || ![0, 3].includes(target) || !storesConnected) return null;
+  const tree = searchFrom(start), points = pathTo(start, target, tree);
+  return points ? buildRoute({ lat: campusStops[target].lat, lng: campusStops[target].lng }, campusStops[target].label, points, tree.costs[target]) : null;
 }
 export function confirmedRoute(value: unknown): GeoRoute | null {
   return (value as DeliveryPin | null)?.confirmed === true ? routeToPin(value) : null;
 }
 export function pickupRoute(value: unknown, storeIds: string[]): GeoRoute | null {
-  // Validate once; each candidate route uses the same confirmed destination.
   if ((value as DeliveryPin | null)?.confirmed !== true || !deliveryArea(value) || !storeIds.length) return null;
-  const stores = [...new Set(storeIds)].map(id => pickupStores.find(s => s.id === id));
-  if (stores.some(s => !s)) return null;
-  // The demo starts at a pickup store. For a mixed bag, compare both pickup
-  // sequences using Dijkstra legs; the lower total travel time wins.
+  const stores = [...new Set(storeIds)].map(id => pickupStores.find(store => store.id === id));
+  if (stores.some(store => !store)) return null;
   const sequences = stores.length === 2 ? [stores, [...stores].reverse()] : [stores];
-  const candidates = sequences.map(sequence => {
-    const legs = sequence.slice(1).map((s, i) => simulatedRoute(campusStops[s!.node], sequence[i]!.node)!);
-    legs.push(simulatedRoute(value, sequence.at(-1)!.node)!);
-    const last = legs.at(-1)!;
+  const candidates: GeoRoute[] = [];
+  for (const sequence of sequences) {
+    const legs = sequence.slice(1).map((store, i) => routeBetweenPickups(sequence[i]!.node, store!.node));
+    legs.push(routeToPin(value, sequence.at(-1)!.node));
+    // Incomplete map data fails closed rather than joining gaps or crashing checkout.
+    if (legs.some(leg => !leg)) continue;
+    const validLegs = legs as GeoRoute[], last = validLegs.at(-1)!;
     let elapsed = 0;
     const pickups = sequence.map((store, index) => {
       const arrivalSeconds = elapsed;
       elapsed += PICKUP_SECONDS;
       const departureSeconds = elapsed;
-      elapsed += legs[index].seconds;
+      elapsed += validLegs[index].seconds;
       return { id: store!.id, name: store!.name, arrivalSeconds, departureSeconds };
     });
-    // Freeze leg times and pickup stops with the order; later map edits must not reroute it.
-    const journey = legs.map((leg, index) => ({ points: leg.points, seconds: leg.seconds,
-      startsAtSeconds: pickups[index].departureSeconds }));
-    return { ...last, points: legs.flatMap((leg, i) => i ? leg.points.slice(1) : leg.points),
-      meters: legs.reduce((sum, leg) => sum + leg.meters, 0), seconds: elapsed,
-      pickups, journey };
-  });
-  return candidates.sort((a, b) => a.seconds - b.seconds)[0];
-}
-export function geoPosition(route: GeoRoute, seconds: number): Coordinate {
-  // New orders pause at each pickup. Older saved routes keep their original animation.
-  if (route.journey) {
-    for (const leg of route.journey) {
-      if (seconds < leg.startsAtSeconds) return leg.points[0];
-      if (seconds < leg.startsAtSeconds + leg.seconds) {
-        const length = leg.points.slice(1).reduce((sum, point, i) => sum + distance(leg.points[i], point), 0);
-        return positionAlong(leg.points, length * (seconds - leg.startsAtSeconds) / leg.seconds);
-      }
-    }
-    return route.destination;
+    // Freeze geometry and stop times so later map edits never reroute saved orders.
+    const journey = validLegs.map((leg, index) => ({ points: leg.points, seconds: leg.seconds, startsAtSeconds: pickups[index].departureSeconds }));
+    candidates.push({ ...last, points: validLegs.flatMap((leg, index) => index ? leg.points.slice(1) : leg.points),
+      meters: validLegs.reduce((sum, leg) => sum + leg.meters, 0), seconds: elapsed, pickups, journey });
   }
-  return positionAlong(route.points, Math.max(0, seconds) * ROBOT_METERS_PER_SECOND);
-}
-function positionAlong(points: Coordinate[], remaining: number): Coordinate {
-  for (let i = 1; i < points.length; i++) {
-    const a = points[i - 1], b = points[i], length = distance(a, b);
-    if (length > 0 && remaining < length) return { lat: a.lat + (b.lat - a.lat) * remaining / length, lng: a.lng + (b.lng - a.lng) * remaining / length };
-    remaining -= length;
-  }
-  return points.at(-1)!;
-}
-export function geoTimeline(route: GeoRoute, createdAt: number, now: number) {
-  const departsAt = createdAt + GEO_PREPARATION_MS, arrivesAt = departsAt + route.seconds * 1000;
-  return { departsAt, arrivesAt, status: now < departsAt ? "preparing" : now < arrivesAt ? "delivering" : "delivered" };
-}
-
-export function deliverySteps(route: GeoRoute, createdAt: number, now: number) {
-  const departure = createdAt + GEO_PREPARATION_MS;
-  const pickups = route.pickups?.filter(p => p.arrivalSeconds !== undefined && p.departureSeconds !== undefined) ?? [];
-  const steps = [
-    { label: "Preparing", startsAt: createdAt },
-    ...pickups.map((p, i) => ({ label: `Pickup ${i + 1} · ${p.name}`,
-      startsAt: departure + (i === 0 ? 0 : pickups[i - 1].departureSeconds!) * 1000 })),
-    { label: "Delivering to your pin", startsAt: departure + (pickups.at(-1)?.departureSeconds ?? 0) * 1000 },
-    { label: "Delivered", startsAt: departure + route.seconds * 1000 },
-  ];
-  const activeIndex = steps.reduce((active, step, i) => now >= step.startsAt ? i : active, 0);
-  return steps.map((step, i) => ({ ...step, state: i < activeIndex ? "complete" : i === activeIndex ? "current" : "upcoming" }));
+  return candidates.sort((a, b) => a.seconds - b.seconds)[0] ?? null;
 }

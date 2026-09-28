@@ -3,7 +3,7 @@ import { campusEdges, campusNodes, fastestRoute, meetingPoints, positionOnRoute,
 import type { Order } from "../types";
 import "./CampusMap.css";
 import { GoogleDeliveryMap } from "./DeliveryMap";
-import { geoPosition, deliverySteps } from "../../shared/campusGeo";
+import { geoPosition, deliverySteps } from "../../shared/deliveryRoute";
 
 function useSimulationClock(running: boolean) {
   const [now, setNow] = useState(Date.now);

@@ -1,6 +1,6 @@
 import { DeliveryProgress } from "./DeliveryProgress";
 import type { CampusStore } from "../hooks/useCampusStore";
-import { deliverySteps } from "../../shared/campusGeo";
+import { deliverySteps } from "../../shared/deliveryRoute";
 import { formatOrderCooldown } from "../lib/orderCooldown";
 
 export function DeliveryStatus({ orders, orderCooldownMs, setView, online }: Pick<CampusStore, "orders" | "orderCooldownMs" | "setView" | "online">) {

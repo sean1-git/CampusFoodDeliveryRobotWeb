@@ -1,12 +1,19 @@
 /// <reference types="google.maps" />
 import { currentLocation } from "../lib/location";
-import { useEffect, useRef, useState } from "react";
-import { campusStops, pinEdges, pinCorridors, deliveryArea, pickupRoute, pickupStores, GEO_PREPARATION_MS, CORRIDOR_METERS } from "../../shared/campusGeo";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { campusStops, campusBoundary, walkwayPaths, walkwayChoices, walkwayMetadata, snapDeliveryPin, deliveryArea, pickupRoute, pickupStores, GEO_PREPARATION_MS, SNAP_METERS } from "../../shared/campusGeo";
 import type { Coordinate, DeliveryPin, GeoRoute } from "../../shared/campusGeo";
 import type { CampusStore } from "../hooks/useCampusStore";
 import { stores } from "../../shared/stores";
 import { loadGoogleMaps } from "../lib/googleMaps";
 import "./CampusMap.css";
+
+function campusMapBounds() {
+  const bounds = new google.maps.LatLngBounds();
+  walkwayPaths.forEach(path => path.points.forEach(point => bounds.extend(point)));
+  pickupStores.forEach(store => bounds.extend(campusStops[store.node]));
+  return bounds;
+}
 
 export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
   pin?: Coordinate | null; onPick?: (point: Coordinate) => void; route?: GeoRoute | null;
@@ -27,17 +34,22 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
     const authError = () => { if (active) { setError("Google Maps authorization failed. Reload after map configuration is restored."); setReady(false); handlers.current.onReady?.(false); } };
     window.addEventListener("campus-map-error", authError);
     const listeners: google.maps.MapsEventListener[] = [];
+    const overlays: (google.maps.Polyline | google.maps.Polygon)[] = [];
+    const storeMarkers: google.maps.marker.AdvancedMarkerElement[] = [];
     void loadGoogleMaps().then(() => {
       if (!active || !element.current) return;
+      const boundaryBounds = new google.maps.LatLngBounds();
+      campusBoundary.forEach(point => boundaryBounds.extend(point));
       const map = new google.maps.Map(element.current, { center: { lat: 37.3635, lng: -120.4260 }, zoom: 17,
         mapId: "DEMO_MAP_ID", mapTypeControl: false, streetViewControl: false, clickableIcons: false,
-        restriction: { latLngBounds: { north: 37.370, south: 37.358, east: -120.418, west: -120.433 }, strictBounds: true } });
+        restriction: { latLngBounds: boundaryBounds, strictBounds: false } });
       mapRef.current = map;
-      const bounds = new google.maps.LatLngBounds();
-      campusStops.forEach(stop => bounds.extend(stop));
-      map.fitBounds(bounds, 40);
-      pinEdges.forEach(([a, b]) => new google.maps.Polyline({ map, path: [campusStops[a], campusStops[b]],
-        strokeColor: "#19817b", strokeOpacity: 0.45, strokeWeight: 12, clickable: false }));
+      map.fitBounds(campusMapBounds(), 40);
+      overlays.push(new google.maps.Polygon({ map, paths: campusBoundary, strokeColor: "#607a98",
+        strokeOpacity: 0.35, strokeWeight: 1, fillOpacity: 0, clickable: false }));
+      // One overlay per mapped path keeps the full campus network inexpensive to draw.
+      walkwayPaths.forEach(path => overlays.push(new google.maps.Polyline({ map, path: path.points,
+        strokeColor: "#19817b", strokeOpacity: 0.55, strokeWeight: 6, clickable: false })));
 
       pickupStores.forEach(store => {
         const tag = document.createElement("span"); tag.className = "map-store-marker map-store-photo-marker";
@@ -46,9 +58,9 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
         photo.alt = ""; photo.width = 34; photo.height = 34;
         const label = document.createElement("span"); label.textContent = store.name;
         tag.append(photo, label);
-        new google.maps.marker.AdvancedMarkerElement({ map, position: campusStops[store.node], content: tag, title: `${store.name} · simulated pickup` });
+        storeMarkers.push(new google.maps.marker.AdvancedMarkerElement({ map, position: campusStops[store.node], content: tag, title: `${store.name} · simulated pickup` }));
       });
-      const marker = new google.maps.marker.AdvancedMarkerElement({ map, title: "Your exact delivery pin", gmpDraggable: !!handlers.current.onPick });
+      const marker = new google.maps.marker.AdvancedMarkerElement({ map, title: "Your meeting point on a campus walkway", gmpDraggable: !!handlers.current.onPick });
       markerRef.current = marker;
       const content = document.createElement("img");
       content.src = "/delivery-robot.svg"; content.alt = "Simulated delivery robot";
@@ -59,7 +71,17 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
       listeners.push(marker.addListener("dragend", () => { const p = marker.position; if (p) handlers.current.onPick?.({ lat: typeof p.lat === "function" ? p.lat() : p.lat, lng: typeof p.lng === "function" ? p.lng() : p.lng }); }));
       setReady(true); handlers.current.onReady?.(true);
     }).catch((failure: Error) => { if (active) { setError(failure.message); handlers.current.onReady?.(false); } });
-    return () => { active = false; listeners.forEach(l => l.remove()); window.removeEventListener("campus-map-error", authError); mapRef.current = null; };
+    return () => {
+      active = false;
+      listeners.forEach(listener => listener.remove());
+      overlays.forEach(overlay => overlay.setMap(null));
+      storeMarkers.forEach(marker => { marker.map = null; });
+      if (markerRef.current) markerRef.current.map = null;
+      if (robotRef.current) robotRef.current.map = null;
+      lineRef.current?.setMap(null);
+      window.removeEventListener("campus-map-error", authError);
+      mapRef.current = null;
+    };
   }, []);
   useEffect(() => {
     if (!ready) return;
@@ -70,9 +92,7 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
   useEffect(() => { if (ready && pin) mapRef.current?.panTo(pin); }, [ready, pin]);
   useEffect(() => { if (ready && robotRef.current) robotRef.current.position = robot ?? null; }, [ready, robot]);
   function showCampus() {
-    const bounds = new google.maps.LatLngBounds();
-    campusStops.forEach(stop => bounds.extend(stop));
-    mapRef.current?.fitBounds(bounds, 40);
+    mapRef.current?.fitBounds(campusMapBounds(), 40);
   }
   function showStore(node: number) {
     // Shop shortcuts only move the camera; the customer still chooses their own pin.
@@ -92,8 +112,9 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
     <div className="map-toolbar"><button className="back" disabled={!ready} onClick={showCampus}>Show campus</button><button className="back" disabled={!ready || !pin} onClick={() => { if (pin) { mapRef.current?.panTo(pin); mapRef.current?.setZoom(19); } }}>Find my pin</button></div>
     {error && <p className="map-notice" role="alert">{error}</p>}
     {!ready && !error && <p role="status">Loading Google Maps…</p>}
-    <div ref={element} className="google-map-canvas" aria-label="UC Merced delivery map" />
-    <div className="map-legend"><span><i className="legend-path" />Meeting paths</span><span><i className="legend-route" />Delivery route</span><span>Photo markers show pickup shops</span></div>
+    <div ref={element} className="google-map-canvas" aria-label="UC Merced delivery map with highlighted pedestrian paths" />
+    <div className="map-legend"><span><i className="legend-path" />Campus walkways</span><span><i className="legend-route" />Delivery route</span><span>Photo markers show pickup shops</span></div>
+    <p className="map-data-credit">Walkway data: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">{walkwayMetadata.attribution}</a>. Highlighted paths are available in this simulation.</p>
   </div>;
 }
 
@@ -109,12 +130,17 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
   useEffect(() => { active.current = true; return () => { active.current = false; locationRequest.current++; }; }, []);
   useEffect(() => { if (locked) locationRequest.current++; }, [locked]);
   const valid = pin ? deliveryArea(pin) : null;
-  const route = pin && valid && lines.length ? pickupRoute({ ...pin, confirmed: true }, lines.map(p => p.storeId)) : null;
+  const route = useMemo(() => pin && valid && lines.length ? pickupRoute({ ...pin, confirmed: true }, lines.map(p => p.storeId)) : null, [pin, valid, lines]);
   // Moving a pin invalidates prior consent; checkout needs an explicit reconfirmation.
   function pick(point: Coordinate) {
-    if (locked) return;
+    if (locked) return null;
     locationRequest.current++;
-    setLocating(false); setPin(point); setDestination(null); setMessage("");
+    const snapped = snapDeliveryPin(point);
+    setLocating(false); setPin(snapped?.point ?? null); setDestination(null);
+    setMessage(snapped
+      ? `Meeting point set on ${snapped.label}${snapped.offsetMeters >= 1 ? `, ${Math.round(snapped.offsetMeters)} meters from where you selected` : ""}. Check the pin, then confirm.`
+      : `Choose a point inside UC Merced within ${SNAP_METERS} meters of a highlighted walkway. The previous meeting point has been cleared.`);
+    return snapped;
   }
   function removeLocation() {
     if (locked) return;
@@ -132,8 +158,8 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
       if (!active.current || requestId !== locationRequest.current) return;
       setLocating(false);
       const point = { lat: result.coords.latitude, lng: result.coords.longitude };
-      if (deliveryArea(point)) { pick(point); setMessage(`Location found, accurate to about ${Math.round(result.coords.accuracy)} meters. Check your pin, then confirm your meeting point.`); }
-      else setMessage("Your reported location is outside the delivery paths. Choose a supported path below instead.");
+      const snapped = pick(point);
+      if (snapped) setMessage(`Location found, accurate to about ${Math.round(result.coords.accuracy)} meters. Your meeting point is on ${snapped.label}${snapped.offsetMeters >= 1 ? `, ${Math.round(snapped.offsetMeters)} meters from the reported location` : ""}. Check the pin before confirming.`);
     }, () => {
       if (!active.current || requestId !== locationRequest.current) return;
       setLocating(false); setMessage("Location was unavailable or permission was declined. Use the path selector below; location sharing is optional.");
@@ -146,7 +172,7 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
   return <section className="campus-delivery">
     <p className="eyebrow">UC MERCED · DELIVERY LOCATION</p>
     <h1>Where should we meet you?</h1>
-    <p className="map-intro">Choose a meeting point on a teal path. Tap the map or pick a path below, then confirm your location.</p>
+    <p className="map-intro">Meet your robot on a campus walkway. Tap near any highlighted line and we’ll place your pin on the path, then you can confirm.</p>
     <div className="location-tools">
     <div className="location-actions">
       <button type="button" className="location-use-button" ref={useLocationButton} disabled={!online || locked || locating || !ready} aria-describedby="location-privacy" onClick={locate}><span aria-hidden="true">⌖</span> {locating ? "Finding your location…" : "Use my location"}</button>
@@ -154,11 +180,9 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
       <span id="location-privacy">Optional · a one-time location check. You can remove your pin at any time.</span>
     </div>
     <label className="path-picker">Start with a campus path
-      <select value="" disabled={locked || !ready || !online} onChange={event => { const stop = campusStops.find(s => s.id === event.target.value); if (stop) pick(stop); }}>
+      <select value="" disabled={locked || !ready || !online} onChange={event => { const stop = walkwayChoices.find(choice => choice.id === event.target.value); if (stop) pick(stop); }}>
         <option value="" disabled>Choose a path or meeting point…</option>
-        {pinCorridors.map(corridor => <optgroup key={corridor.name} label={corridor.name}>
-          {[...new Set(corridor.edges.flat())].map(index => <option key={campusStops[index].id} value={campusStops[index].id}>{campusStops[index].label}</option>)}
-        </optgroup>)}
+        {walkwayChoices.map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
       </select>
     </label>
     </div>
@@ -174,6 +198,6 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
     {!online && <p role="alert">You’re offline. Reconnect before confirming your meeting point.</p>}
     {locked && <p role="status">Your checkout is in progress. Finish or cancel it before changing the meeting point.</p>}
     <div className="pin-confirm-bar"><button className="back" onClick={() => setView("shop")}>Back to bag</button><button className="primary" disabled={!valid || !ready || !online || locked} onClick={confirm}>Confirm meeting point →</button></div>
-    <details className="map-help"><summary>How delivery locations work</summary><p>Pins must be within {CORRIDOR_METERS} m of a highlighted path. Your exact confirmed point is saved with checkout. Removing a pin clears the current meeting point, not previous orders or device location permission. Store markers and routes are for the demo; real robot navigation and tracking are not connected.</p></details>
+    <details className="map-help"><summary>How delivery locations work</summary><p>Select inside campus within {SNAP_METERS} m of a highlighted walkway. Your pin snaps onto the mapped path, and that meeting point is saved with checkout. Highlighted walkways connect to the pickup shops; stairs, private paths, and paths without a mapped connection are excluded. Map data can be incomplete.</p><p>Removing a pin clears the current meeting point, not previous orders or device location permission. This is a delivery simulation; a real robot needs its own verified navigation and live tracking.</p></details>
   </section>;
 }

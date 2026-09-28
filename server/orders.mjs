@@ -6,6 +6,7 @@ import catalog from "../shared/catalog.json" with { type: "json" };
 import { json, readSmallJson } from "./http.mjs";
 import { deliveryTimeline } from "../shared/campusRouting.ts";
 import { pickupRoute, geoTimeline } from "../shared/campusGeo.ts";
+import { coordinate } from "../shared/deliveryRoute.ts";
 import {
   ensureInventory,
   settleTicks,
@@ -105,14 +106,13 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
   }
   // Canonical order makes retries with reordered cart lines share one fingerprint.
   items.sort((a, b) => a.id.localeCompare(b.id));
-  // Store ownership and route geometry come from the server, never client claims.
-  const route = pickupRoute(body.destination, items.map(item => productsById.get(item.id).storeId));
-  if (!route) return json({ code: "delivery_pin_required", error: "Confirm an exact delivery pin on a highlighted UC Merced demo path before checkout. Pins outside the service area are not accepted." }, 400);
-  // Freeze the packing list for each pickup using trusted catalog store ownership.
-  route.pickups = route.pickups.map(pickup => ({ ...pickup, items: items
-    .filter(item => productsById.get(item.id).storeId === pickup.id)
-    .map(item => ({ name: item.name, quantity: item.quantity })) }));
-  const fingerprint = JSON.stringify({ items, destination: route.destination });
+  if (!coordinate(body.destination) || body.destination.confirmed !== true)
+    return json({ code: "delivery_pin_required", error: "Confirm a delivery pin on a highlighted UC Merced walkway before checkout." }, 400);
+  // Fingerprint the submitted point, not a projection that could change with a
+  // future map snapshot. Existing orders and holds retain their frozen route.
+  const fingerprint = JSON.stringify({ items, destination: {
+    lat: body.destination.lat, lng: body.destination.lng, confirmed: true,
+  } });
   const existing = await db
     .prepare("SELECT * FROM orders WHERE account_id = ? AND request_key = ?")
     .bind(session.account_id, key)
@@ -128,10 +128,17 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
     .prepare("SELECT * FROM checkout_queue WHERE account_id = ? AND request_key = ?")
     .bind(session.account_id, key)
     .first();
-  if (!existing && !queued) {
-    const recent = await recentOrder(db, session.account_id, now);
-    if (recent) return orderCooldown(recent.retryAt);
-  }
+  if (queued) return queued.request_hash === fingerprint && queued.kind === kind
+    ? checkoutResult(db, session.account_id, key, now)
+    : json({ error: "This checkout ID was already used for a different cart." }, 409);
+  // Store ownership, eligibility, and final snapped geometry are server-owned.
+  const route = pickupRoute(body.destination, items.map(item => productsById.get(item.id).storeId));
+  if (!route) return json({ code: "delivery_pin_required", error: "Confirm an exact delivery pin on a highlighted UC Merced walkway before checkout. Pins outside the connected campus paths are not accepted." }, 400);
+  route.pickups = route.pickups.map(pickup => ({ ...pickup, items: items
+    .filter(item => productsById.get(item.id).storeId === pickup.id)
+    .map(item => ({ name: item.name, quantity: item.quantity })) }));
+  const recent = await recentOrder(db, session.account_id, now);
+  if (recent) return orderCooldown(recent.retryAt);
   const subtotal = items.reduce(
     (sum, item) => sum + item.priceCents * item.quantity,
     0,

@@ -62,6 +62,9 @@
 .friendly-map .map-toolbar { padding: 0 6px 12px; }
 .friendly-map .map-toolbar .back { font-size: .76rem; border-radius: 12px; }
 .friendly-map .map-legend { margin: 0; padding: 16px 10px 8px; gap: 10px 20px; }
+.friendly-map .map-data-credit { margin: 0; padding: 0 10px 10px; color: #53647a; font-size: .75rem; line-height: 1.5; }
+.map-data-credit a { color: #245c82; text-decoration: underline; text-underline-offset: 2px; }
+.map-data-credit a:focus-visible { outline: 3px solid #3559c7; outline-offset: 3px; border-radius: 2px; }
 .friendly-map .map-store-photo-marker { display: inline-flex; align-items: center; gap: 8px; max-width: 220px; padding: 5px 10px 5px 5px; background: #fff; color: #142b52; border: 1px solid #b6c7da; border-radius: 13px; box-shadow: 0 3px 10px #142b5226; white-space: normal; }
 .map-store-photo-marker img { width: 34px; height: 34px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
 .map-store-photo-marker > span { max-width: 135px; line-height: 1.3; }
