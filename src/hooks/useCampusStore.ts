@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import sampleCatalog from "../../shared/catalog.json";
 import type { Cart, HeldCheckout, Order, Pending, Product, QueuedCheckout, Reservation, Session } from "../types";
 import { requestJson } from "../lib/api";
@@ -6,6 +6,7 @@ import { initialCart, load, save } from "../lib/storage";
 import { readReservation, reservationExpired, RESERVATION_KEY } from "../lib/inventoryCache";
 import { publishTabEvent, subscribeTabEvents } from "../lib/tabSync";
 import { createRefreshQueue } from "../lib/refreshQueue";
+import { sameCartQuantities, summarizeCart } from "../lib/cart";
 import { useInventory } from "./useInventory";
 import { coordinate } from "../../shared/deliveryRoute";
 import type { DeliveryPin } from "../../shared/campusGeo";
@@ -13,6 +14,9 @@ import type { DeliveryPin } from "../../shared/campusGeo";
 type CheckoutReply = Order | HeldCheckout | QueuedCheckout;
 type ApiError = Error & { status?: number; code?: string };
 const restoreHold = () => { try { return readReservation(localStorage); } catch { return null; } };
+// Older persisted checkouts still require this fallback label. New order labels
+// are computed by the server from the confirmed delivery pin.
+const location = sampleCatalog.locations[0];
 
 export function useCampusStore() {
   const [online, setOnline] = useState(navigator.onLine);
@@ -24,7 +28,6 @@ export function useCampusStore() {
   const [view, setView] = useState<"shop" | "orders" | "map">("shop");
   const [filter, setFilter] = useState("All items");
   const [storeId, setStoreId] = useState("summits");
-  const [location, setLocation] = useState(sampleCatalog.locations[0]);
   const [destination, setDestination] = useState<DeliveryPin | null>(null);
   const [reservation, setReservation] = useState<Reservation | null>(restoreHold);
   const reservationRef = useRef(reservation);
@@ -62,15 +65,16 @@ export function useCampusStore() {
       try {
         const user = await requestJson<Session & { orders: Order[] }>("/api/session?include=orders");
         const replaced = sessionToken !== null && sessionToken !== user.csrf;
+        const receivedAt = Date.now();
         sessionToken = user.csrf;
         setSession(user);
-        setServerClockOffset(user.serverNow ? user.serverNow - Date.now() : 0);
-        setClock(Date.now());
+        setServerClockOffset(user.serverNow ? user.serverNow - receivedAt : 0);
+        setClock(receivedAt);
         if (replaced) {
           setOrders([]);
           publishTabEvent("session");
         }
-        setOrders(user.orders.map((order) => ({ ...order, receivedAt: Date.now() })));
+        setOrders(user.orders.map((order) => ({ ...order, receivedAt })));
       } catch (failure) {
         const problem = failure as ApiError;
         if (problem.status === 401) {
@@ -105,7 +109,8 @@ export function useCampusStore() {
     if (result.status === "held") {
       writeHold({ ...attempt, phase: attempt.phase === "confirming" || attempt.phase === "cancelling" ? attempt.phase : "held", expiresAt: result.expiresAt,
         clockOffsetMs: result.serverNow - Date.now() }, broadcast);
-      setCart(Object.fromEntries(attempt.body.items.map((p) => [p.id, p.quantity])));
+      const heldCart = Object.fromEntries(attempt.body.items.map((p) => [p.id, p.quantity]));
+      setCart(current => sameCartQuantities(current, heldCart) ? current : heldCart);
       setNotice("Your items are reserved for five minutes. Confirm before the timer ends.");
     } else finishOrder(result);
   }, [writeHold, finishOrder]);
@@ -155,7 +160,7 @@ export function useCampusStore() {
       const nextCart = initialCart();
       // Remote hydration must not publish the same cart back to every tab.
       cartSnapshot.current = JSON.stringify(nextCart);
-      setCart((current) => JSON.stringify(current) === JSON.stringify(nextCart) ? current : nextCart);
+      setCart((current) => sameCartQuantities(current, nextCart) ? current : nextCart);
       const nextHold = restoreHold();
       if (JSON.stringify(reservationRef.current) !== JSON.stringify(nextHold)) {
         reservationRef.current = nextHold;
@@ -207,12 +212,13 @@ export function useCampusStore() {
     return () => { active = false; };
   }, [online, refresh, reconcileHold]);
 
-  const activeOrders = orders.filter((o) => o.status !== "delivered").length;
+  const activeOrders = useMemo(() => orders.filter((order) => order.status !== "delivered").length, [orders]);
   const csrf = session?.csrf;
   const hasCheckout = !!reservation || !!pending;
   const orderCooldownMs = session?.nextOrderAt
     ? Math.max(0, session.nextOrderAt - clock - serverClockOffset)
     : 0;
+  const secondsLeft = reservation ? Math.min(300, Math.max(0, Math.ceil((reservation.expiresAt - clock - reservation.clockOffsetMs) / 1000))) : 0;
   useEffect(() => {
     if (!online || !csrf) return;
     const timer = setInterval(() => {
@@ -222,7 +228,10 @@ export function useCampusStore() {
     return () => clearInterval(timer);
   }, [online, csrf, activeOrders, hasCheckout, refresh, reconcileHold]);
 
-  const needsCountdown = !!reservation || !!session?.nextOrderAt;
+  // Elapsed estimates no longer need per-second renders. Server polling still
+  // reconciles active orders and uncertain confirmations, including after expiry.
+  const needsCountdown = orderCooldownMs > 0
+    || (!!reservation && (reservation.phase !== "confirming" || secondsLeft > 0));
   useEffect(() => {
     // Idle browsing has no countdown: avoid re-rendering the whole app every second.
     if (!needsCountdown) return;
@@ -245,13 +254,11 @@ export function useCampusStore() {
     };
   }, [clearExpired, needsCountdown]);
 
-  const lines = catalog.products.filter((p) => cart[p.id] > 0);
-  const quantity = lines.reduce((sum, p) => sum + cart[p.id], 0);
-  const subtotal = lines.reduce((sum, p) => sum + p.priceCents * cart[p.id], 0);
-  const total = subtotal + (quantity ? catalog.deliveryFeeCents : 0);
-  const locked = submitting || !!pending || !!reservation;
-  const checkout = hasCheckout;
-  const secondsLeft = reservation ? Math.min(300, Math.max(0, Math.ceil((reservation.expiresAt - clock - reservation.clockOffsetMs) / 1000))) : 0;
+  const { lines, quantity, subtotal, total } = useMemo(
+    () => summarizeCart(catalog.products, cart, catalog.deliveryFeeCents),
+    [catalog.products, catalog.deliveryFeeCents, cart],
+  );
+  const locked = submitting || hasCheckout;
 
   const change = useCallback((product: Product, amount: number) => {
     if (locked) return;
@@ -365,8 +372,8 @@ export function useCampusStore() {
     finally { setBooting(false); }
   }
 
-  return { ...inventory, session, cart, orders, view, setView, filter, setFilter, storeId, setStoreId, location, setLocation, destination, setDestination,
-    checkout, online, error, notice, submitting, pending, reservation, secondsLeft, lastApiSuccessAt,
+  return { ...inventory, session, cart, orders, view, setView, filter, setFilter, storeId, setStoreId, location, destination, setDestination,
+    checkout: hasCheckout, online, error, notice, submitting, pending, reservation, secondsLeft, lastApiSuccessAt,
     orderCooldownMs, nextOrderAt: session?.nextOrderAt ?? null,
     booting, lines, quantity, subtotal, total, locked, activeOrders, change, beginCheckout, placeOrder,
     cancelCheckout, reconnect };

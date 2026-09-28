@@ -1,6 +1,6 @@
 /// <reference types="google.maps" />
 import { currentLocation } from "../lib/location";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { campusStops, campusBoundary, walkwayPaths, walkwayChoices, walkwayMetadata, snapDeliveryPin, deliveryArea, pickupRoute, pickupStores, GEO_PREPARATION_MS, SNAP_METERS } from "../../shared/campusGeo";
 import type { Coordinate, DeliveryPin, GeoRoute } from "../../shared/campusGeo";
 import type { CampusStore } from "../hooks/useCampusStore";
@@ -8,14 +8,19 @@ import { stores } from "../../shared/stores";
 import { loadGoogleMaps } from "../lib/googleMaps";
 import "./CampusMap.css";
 
-function campusMapBounds() {
-  const bounds = new google.maps.LatLngBounds();
-  walkwayPaths.forEach(path => path.points.forEach(point => bounds.extend(point)));
-  pickupStores.forEach(store => bounds.extend(campusStops[store.node]));
+function boundsFor(points: Coordinate[]): google.maps.LatLngBoundsLiteral {
+  const bounds = { north: -Infinity, south: Infinity, east: -Infinity, west: Infinity };
+  points.forEach(({ lat, lng }) => {
+    bounds.north = Math.max(bounds.north, lat); bounds.south = Math.min(bounds.south, lat);
+    bounds.east = Math.max(bounds.east, lng); bounds.west = Math.min(bounds.west, lng);
+  });
   return bounds;
 }
+// The imported campus network is fixed for this build; calculate its extent once.
+const campusViewBounds = boundsFor([...walkwayPaths.flatMap(path => path.points), ...pickupStores.map(store => campusStops[store.node])]);
+const campusRestrictionBounds = boundsFor(campusBoundary);
 
-export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
+export const GoogleDeliveryMap = memo(function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
   pin?: Coordinate | null; onPick?: (point: Coordinate) => void; route?: GeoRoute | null;
   robot?: Coordinate; onReady?: (ready: boolean) => void;
 }) {
@@ -39,13 +44,11 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
     const storeMarkers: google.maps.marker.AdvancedMarkerElement[] = [];
     void loadGoogleMaps().then(() => {
       if (!active || !element.current) return;
-      const boundaryBounds = new google.maps.LatLngBounds();
-      campusBoundary.forEach(point => boundaryBounds.extend(point));
       const map = new google.maps.Map(element.current, { center: { lat: 37.3635, lng: -120.4260 }, zoom: 17,
         mapId: "DEMO_MAP_ID", mapTypeControl: false, streetViewControl: false, clickableIcons: false,
-        restriction: { latLngBounds: boundaryBounds, strictBounds: false } });
+        restriction: { latLngBounds: campusRestrictionBounds, strictBounds: false } });
       mapRef.current = map;
-      map.fitBounds(campusMapBounds(), 40);
+      map.fitBounds(campusViewBounds, 40);
       overlays.push(new google.maps.Polygon({ map, paths: campusBoundary, strokeColor: "#607a98",
         strokeOpacity: 0.35, strokeWeight: 1, fillOpacity: 0, clickable: false }));
       // One overlay per mapped path keeps the full campus network inexpensive to draw.
@@ -92,20 +95,30 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
       mapRef.current = null;
     };
   }, []);
+  const pinLat = pin?.lat, pinLng = pin?.lng;
+  const robotLat = robot?.lat, robotLng = robot?.lng;
+  const routePoints = route?.points;
+  // Updating robot position or interactivity must not rebuild the route geometry.
   useEffect(() => {
-    if (!ready) return;
-    if (markerRef.current) { markerRef.current.position = pin ?? null; markerRef.current.gmpDraggable = !!onPick; }
-  
-    lineRef.current?.setPath(route?.points ?? []);
-  }, [ready, pin, route, onPick]);
+    // A drag can snap back to the same coordinates; still restore the marker then.
+    if (ready && markerRef.current) markerRef.current.position = pin ?? null;
+  }, [ready, pin]);
   useEffect(() => {
-    if (!ready || !pin || !editable || !mapRef.current) return;
-    mapRef.current.panTo(pin);
+    if (ready && markerRef.current) markerRef.current.gmpDraggable = editable;
+  }, [ready, editable]);
+  useEffect(() => {
+    if (ready) lineRef.current?.setPath(routePoints ?? []);
+  }, [ready, routePoints]);
+  useEffect(() => {
+    if (!ready || pinLat == null || pinLng == null || !editable || !mapRef.current) return;
+    mapRef.current.panTo({ lat: pinLat, lng: pinLng });
     mapRef.current.setZoom(Math.max(18, mapRef.current.getZoom() ?? 18));
-  }, [ready, pin, editable]);
-  useEffect(() => { if (ready && robotRef.current) robotRef.current.position = robot ?? null; }, [ready, robot]);
+  }, [ready, pinLat, pinLng, editable]);
+  useEffect(() => {
+    if (ready && robotRef.current) robotRef.current.position = robotLat == null || robotLng == null ? null : { lat: robotLat, lng: robotLng };
+  }, [ready, robotLat, robotLng]);
   function showCampus() {
-    mapRef.current?.fitBounds(campusMapBounds(), 40);
+    mapRef.current?.fitBounds(campusViewBounds, 40);
   }
   function showStore(node: number) {
     // Shop shortcuts only move the camera; the customer still chooses their own pin.
@@ -129,7 +142,7 @@ export function GoogleDeliveryMap({ pin, onPick, route, robot, onReady }: {
     <div className="map-legend"><span><i className="legend-path" />Campus walkways</span><span><i className="legend-route" />Delivery route</span><span>Photo markers show pickup shops</span></div>
     <p className="map-data-credit">Walkway data: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">{walkwayMetadata.attribution}</a>. Highlighted paths are available in this simulation.</p>
   </div>;
-}
+});
 
 export function DeliveryLocation({ destination, setDestination, locked, online, setView, lines }: Pick<CampusStore,
   "destination" | "setDestination" | "locked" | "online" | "setView" | "lines">) {
@@ -137,44 +150,52 @@ export function DeliveryLocation({ destination, setDestination, locked, online, 
   const [ready, setReady] = useState(false);
   const [locating, setLocating] = useState(false);
   const [message, setMessage] = useState("");
-  const active = useRef(true);
-  const locationRequest = useRef(0);
+  const locationRequest = useRef({ active: true, id: 0 });
   const useLocationButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => { active.current = true; return () => { active.current = false; locationRequest.current++; }; }, []);
-  useEffect(() => { if (locked) locationRequest.current++; }, [locked]);
-  const valid = pin ? deliveryArea(pin) : null;
-  const route = useMemo(() => pin && valid && lines.length ? pickupRoute({ ...pin, confirmed: true }, lines.map(p => p.storeId)) : null, [pin, valid, lines]);
+  useEffect(() => {
+    const request = locationRequest.current;
+    request.active = true;
+    return () => { request.active = false; request.id++; };
+  }, []);
+  useEffect(() => { if (locked) locationRequest.current.id++; }, [locked]);
+  const valid = useMemo(() => pin ? deliveryArea(pin) : null, [pin]);
+  // Quantities and inventory refreshes don't change the pickup locations or route.
+  const pickupStoreKey = JSON.stringify([...new Set(lines.map(line => line.storeId))]);
+  const route = useMemo(() => {
+    const storeIds: string[] = JSON.parse(pickupStoreKey);
+    return pin && valid && storeIds.length ? pickupRoute({ ...pin, confirmed: true }, storeIds) : null;
+  }, [pin, valid, pickupStoreKey]);
   // Moving a pin invalidates prior consent; checkout needs an explicit reconfirmation.
-  function pick(point: Coordinate) {
+  const pick = useCallback((point: Coordinate) => {
     if (locked) return null;
-    locationRequest.current++;
+    locationRequest.current.id++;
     const snapped = snapDeliveryPin(point);
     setLocating(false); setPin(snapped?.point ?? null); setDestination(null);
     setMessage(snapped
       ? `Meeting point set on ${snapped.label}${snapped.offsetMeters >= 1 ? `, ${Math.round(snapped.offsetMeters)} meters from where you selected` : ""}. Check the pin, then confirm.`
       : `Choose a point inside UC Merced within ${SNAP_METERS} meters of a highlighted walkway. The previous meeting point has been cleared.`);
     return snapped;
-  }
+  }, [locked, setDestination]);
   function removeLocation() {
     if (locked) return;
     // Browser geolocation cannot be cancelled; invalidate its callback so a late fix cannot restore the pin.
-    locationRequest.current++;
+    locationRequest.current.id++;
     setLocating(false); setPin(null); setDestination(null);
     setMessage("Location removed. Choose a new meeting point whenever you’re ready.");
     useLocationButton.current?.focus();
   }
   function locate() {
     if (locked || locating || !online || !ready) return;
-    const requestId = ++locationRequest.current;
+    const requestId = ++locationRequest.current.id;
     setLocating(true); setMessage("Waiting for your location. You can cancel at any time.");
     void currentLocation().then(result => {
-      if (!active.current || requestId !== locationRequest.current) return;
+      if (!locationRequest.current.active || requestId !== locationRequest.current.id) return;
       setLocating(false);
       const point = { lat: result.coords.latitude, lng: result.coords.longitude };
       const snapped = pick(point);
       if (snapped) setMessage(`Location found, accurate to about ${Math.round(result.coords.accuracy)} meters. Your meeting point is on ${snapped.label}${snapped.offsetMeters >= 1 ? `, ${Math.round(snapped.offsetMeters)} meters from the reported location` : ""}. Check the pin before confirming.`);
     }, () => {
-      if (!active.current || requestId !== locationRequest.current) return;
+      if (!locationRequest.current.active || requestId !== locationRequest.current.id) return;
       setLocating(false); setMessage("Location was unavailable or permission was declined. Use the path selector below; location sharing is optional.");
     });
   }

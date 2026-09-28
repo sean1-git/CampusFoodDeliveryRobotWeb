@@ -68,7 +68,7 @@ npm run build
 npm test
 ```
 
-Tests cover competing buyers, hold expiry, retries, account isolation, CSRF, route connectivity, and offline recovery.
+Tests cover competing buyers, hold expiry, retries, account isolation, CSRF, route connectivity, and offline recovery. See [dependency maintenance](docs/DEPENDENCIES.md) for runtime packaging and pinned tooling fixes.
 
 ## Deployment limits
 

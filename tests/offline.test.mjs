@@ -21,7 +21,7 @@ test("inventory refresh is due at exactly fifteen minutes, including on reconnec
 });
 
 test("older cached catalogs gain store assignments without refreshing their stock timestamps", () => {
-  const snapshot = { catalog: { ...catalog, products: catalog.products.map(({ storeId, ...p }) => ({ ...p, stock: 3 })) }, fetchedAt: 1100 };
+  const snapshot = { catalog: { ...catalog, products: catalog.products.map(({ storeId: _storeId, ...p }) => ({ ...p, stock: 3 })) }, fetchedAt: 1100 };
   const restored = readInventorySnapshot({ getItem: () => JSON.stringify(snapshot) });
   assert.equal(restored.catalog.products.find(p => p.id === "sandwich").storeId, "library");
   assert.equal(restored.catalog.products.find(p => p.id === "noodles").storeId, "summits");

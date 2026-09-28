@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build": "tsc -b && node scripts/build-icons.mjs && vite build && node scripts/build-pwa.mjs && node scripts/build-compressed.mjs && vite build --config vite.worker.config.ts",
+    "build": "npm run build:web && vite build --config vite.worker.config.ts",
+    "build:web": "tsc -b && node scripts/build-icons.mjs && vite build && node scripts/build-pwa.mjs && node scripts/build-compressed.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "dev:api": "node --watch server/local.mjs",
@@ -24,7 +25,6 @@
     "@capacitor/geolocation": "^8.2.2",
     "@capacitor/ios": "^8.5.2",
     "@material/web": "^2.5.0",
-    "drizzle-orm": "^0.45.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
@@ -36,9 +36,18 @@
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "drizzle-kit": "^0.31.11",
+    "drizzle-orm": "^0.45.3",
     "oxlint": "^1.81.0",
     "sharp": "^0.35.5",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils@3.3.2": {
+      "esbuild": "0.25.12"
+    },
+    "xcode@3.0.1": {
+      "uuid": "11.1.1"
+    }
   }
 }
