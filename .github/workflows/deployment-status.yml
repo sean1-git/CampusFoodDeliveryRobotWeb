@@ -1,0 +1,33 @@
+name: Report Cloud Run deployment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+  deployments: write
+
+# Serialize reports; an older observer exits as soon as main moves forward.
+concurrency:
+  group: cloud-run-production-status
+  cancel-in-progress: false
+
+jobs:
+  report:
+    if: github.repository_id == '1380672955' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Read reporting script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, verified against the official repository
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/report-deployment.mjs
+          sparse-checkout-cone-mode: false
+      - name: Observe the existing Cloud Build deployment
+        run: node scripts/report-deployment.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

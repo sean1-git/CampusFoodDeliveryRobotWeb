@@ -2,7 +2,9 @@
 
 A shopping PWA for UC Merced. Students shop at The Summit's Marketplace and Bobcat's Snack Shop, choose a campus meeting point, and follow a simulated robot delivery.
 
-[Try the demo](https://projectdemo-qf2f7jkpma-ew.a.run.app/)
+[![Cloud Run deployment](https://github.com/sean1-git/uc-merced-campus-store/actions/workflows/deployment-status.yml/badge.svg?branch=main)](https://github.com/sean1-git/uc-merced-campus-store/actions/workflows/deployment-status.yml)
+
+[Try the demo](https://projectdemo-qf2f7jkpma-ew.a.run.app/) · [Deployment history](https://github.com/sean1-git/uc-merced-campus-store/deployments)
 
 The demo uses sample inventory and a $50 wallet. School sign-in, real payments, and physical robots are not connected.
 
@@ -21,7 +23,7 @@ The demo uses sample inventory and a $50 wallet. School sign-in, real payments, 
 | Backend | Node.js HTTP API, cookie sessions, CSRF protection |
 | Database | SQLite through Node's built-in driver; Drizzle schema and SQL migrations |
 | Maps and routing | Google Maps JavaScript API, OpenStreetMap walkway graph, Dijkstra |
-| Infrastructure | Docker, Cloud Run; GitHub-triggered Cloud Build configured in Google Cloud |
+| Infrastructure | Docker, Cloud Run; Cloud Build deploys, GitHub Actions reports deployment status |
 | Mobile | PWA service worker and manifest; Capacitor Android/iOS development projects |
 
 ## Why these choices
@@ -77,3 +79,4 @@ The demo runs one Cloud Run instance with local SQLite; container replacement re
 - [Walkway data](docs/WALKWAY_DATA.md): coverage, routing limits, import steps, and attribution.
 - [Native setup](NATIVE.md): Android/iOS development, testing, and signing requirements.
 - [Dependencies](docs/DEPENDENCIES.md): runtime packaging and tooling maintenance.
+- [Deployment](docs/DEPLOYMENT.md): Cloud Run releases and GitHub deployment reporting.
