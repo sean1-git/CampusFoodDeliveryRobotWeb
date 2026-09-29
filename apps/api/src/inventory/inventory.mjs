@@ -11,12 +11,23 @@ const heldQuantity = `(SELECT COALESCE(SUM(json_extract(held.value, '$.quantity'
   WHERE reservation.status = 'held' AND reservation.expires_at > ?
     AND json_extract(held.value, '$.id') = i.product_id)`;
 
-// Insert once; refreshing or restarting the app never replenishes sold stock.
-export async function ensureInventory(db) {
-  await db.prepare(`INSERT INTO inventory (product_id, quantity)
-    SELECT json_extract(value, '$.id'), ? FROM json_each(?) WHERE true
-    ON CONFLICT(product_id) DO NOTHING`)
-    .bind(INITIAL_STOCK, JSON.stringify(catalog.products)).run();
+const inventoryInitialization = new WeakMap();
+
+// Share one successful seed per binding, including overlapping first requests.
+// A new connection still seeds missing products without replenishing sold stock.
+export function ensureInventory(db) {
+  let initialization = inventoryInitialization.get(db);
+  if (!initialization) {
+    initialization = Promise.resolve().then(() => db.prepare(`INSERT INTO inventory (product_id, quantity)
+      SELECT json_extract(value, '$.id'), ? FROM json_each(?) WHERE true
+      ON CONFLICT(product_id) DO NOTHING`)
+      .bind(INITIAL_STOCK, JSON.stringify(catalog.products)).run()).catch(error => {
+      inventoryInitialization.delete(db);
+      throw error;
+    });
+    inventoryInitialization.set(db, initialization);
+  }
+  return initialization;
 }
 
 export async function availableInventory(db, now = Date.now()) {

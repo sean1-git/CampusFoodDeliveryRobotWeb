@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "dev:api": "node --watch apps/api/src/local.mjs",
     "start": "node apps/api/src/local.mjs",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "node tooling/database/generate-migration.mjs",
     "test": "node --test \"tests/**/*.test.mjs\"",
     "dev:web": "vite",
     "build:native": "tsc -b && node tooling/build/build-icons.mjs && vite build --mode native",

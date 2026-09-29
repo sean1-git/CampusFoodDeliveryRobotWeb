@@ -5,6 +5,9 @@
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";
 
+// Bound ad-hoc SQL retention while reusing the API's recurring queries.
+const STATEMENT_CACHE_SIZE = 128;
+
 export function openDatabase(filename = ":memory:") {
   const sqlite = new DatabaseSync(filename);
   sqlite.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;");
@@ -33,10 +36,21 @@ export function openDatabase(filename = ":memory:") {
       throw error;
     }
   }
-  function prepared(sql, args = []) {
-    const statement = sqlite.prepare(sql);
+  const statementCache = new Map();
+  function statementFor(sql) {
+    let statement = statementCache.get(sql);
+    if (statement) statementCache.delete(sql);
+    else statement = sqlite.prepare(sql);
+    statementCache.set(sql, statement);
+    if (statementCache.size > STATEMENT_CACHE_SIZE)
+      statementCache.delete(statementCache.keys().next().value);
+    return statement;
+  }
+  function prepared(statement, args = []) {
     return {
-      bind: (...values) => prepared(sql, values),
+      // Bindings belong to each wrapper, never to the cached statement. Pending
+      // requests and transaction batches can safely share SQL with different args.
+      bind: (...values) => prepared(statement, values),
       first: async () => statement.get(...args) ?? null,
       all: async () => ({ results: statement.all(...args) }),
       run: async () => statement.run(...args),
@@ -57,8 +71,11 @@ export function openDatabase(filename = ":memory:") {
       }
     },
     prepare(sql) {
-      return prepared(sql);
+      return prepared(statementFor(sql));
     },
-    close: () => sqlite.close(),
+    close() {
+      statementCache.clear();
+      sqlite.close();
+    },
   };
 }

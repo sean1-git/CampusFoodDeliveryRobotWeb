@@ -90,5 +90,7 @@ The demo runs one Cloud Run instance with local SQLite; container replacement re
 - [Walkway data](docs/WALKWAY_DATA.md): coverage, routing limits, import steps, and attribution.
 - [Native setup](docs/NATIVE.md): Android/iOS development, testing, and signing requirements.
 - [Dependencies](docs/DEPENDENCIES.md): runtime packaging and tooling maintenance.
+- [Production review](docs/PRODUCTION_REVIEW.md): measured fixes, scalability limits, and the PostgreSQL rollout plan.
+- [Database changes](docs/DATABASE.md): migrations and the current generation guard.
 - [Deployment](docs/DEPLOYMENT.md): Cloud Run releases and GitHub deployment reporting.
 - [Security](SECURITY.md): credential handling, automated checks, and demo limits.

@@ -19,6 +19,36 @@ const uuid = () => crypto.randomUUID();
 const validId = (value) =>
   typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
 
+function intentItems(value) {
+  if (!Array.isArray(value) || !value.length) return null;
+  const seen = new Set(), items = [];
+  for (const item of value) {
+    if (typeof item?.id !== "string" || !item.id || item.id.length > 128
+      || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 20
+      || seen.has(item.id)) return null;
+    seen.add(item.id);
+    items.push({ id: item.id, quantity: item.quantity });
+  }
+  return items.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function intentFingerprint(items, destination) {
+  return JSON.stringify({ items, destination: {
+    lat: destination.lat, lng: destination.lng, confirmed: true,
+  } });
+}
+
+function matchesIntent(stored, fingerprint) {
+  if (stored === fingerprint) return true;
+  // Older hashes included server-owned names and prices. Compare their saved
+  // request intent without repricing or rewriting an existing checkout.
+  try {
+    const legacy = JSON.parse(stored), items = intentItems(legacy?.items);
+    return !!items && coordinate(legacy.destination) && legacy.destination.confirmed === true
+      && intentFingerprint(items, legacy.destination) === fingerprint;
+  } catch { return false; }
+}
+
 async function recentOrder(db, accountId, now) {
   const row = await db
     .prepare("SELECT cooldown_until FROM accounts WHERE id = ?")
@@ -47,7 +77,7 @@ export function publicOrder(row, now) {
     id: row.id,
     items: JSON.parse(row.items),
     subtotalCents: row.subtotal,
-    deliveryFeeCents: catalog.deliveryFeeCents,
+    deliveryFeeCents: row.total - row.subtotal,
     totalCents: row.total,
     location: row.location,
     deliveryRoute,
@@ -61,64 +91,31 @@ export function publicOrder(row, now) {
 export async function createDemoOrder(request, db, session, now, kind = "purchase") {
   if (request.headers.get("x-csrf-token") !== session.csrf)
     return json(
-      { error: "Session validation failed. Reload and try again." },
+      { code: "csrf_mismatch", error: "Session validation failed. Reload and try again." },
       403,
     );
   const key = request.headers.get("idempotency-key");
   if (!validId(key))
     return json({ error: "A valid checkout request ID is required." }, 400);
   const body = await readSmallJson(request);
-  if (
-    !body ||
-    !Array.isArray(body.items) ||
-    body.items.length < 1 ||
-    body.items.length > catalog.products.length
-  ) {
+  const requestedItems = intentItems(body?.items);
+  if (!requestedItems) {
     return json(
-      { error: "Choose products and a supported delivery location." },
+      { error: "The cart contains an invalid product or quantity." },
       400,
     );
   }
-  // Use only catalog prices; browser-supplied prices must not determine the charge.
-  const seen = new Set();
-  const items = [];
-  for (const item of body.items) {
-    const product = productsById.get(item?.id);
-    if (
-      !product ||
-      !Number.isInteger(item.quantity) ||
-      item.quantity < 1 ||
-      item.quantity > 20 ||
-      seen.has(item.id)
-    ) {
-      return json(
-        { error: "The cart contains an invalid product or quantity." },
-        400,
-      );
-    }
-    seen.add(item.id);
-    items.push({
-      id: product.id,
-      name: product.name,
-      priceCents: product.priceCents,
-      quantity: item.quantity,
-    });
-  }
-  // Canonical order makes retries with reordered cart lines share one fingerprint.
-  items.sort((a, b) => a.id.localeCompare(b.id));
   if (!coordinate(body.destination) || body.destination.confirmed !== true)
     return json({ code: "delivery_pin_required", error: "Confirm a delivery pin on a highlighted UC Merced walkway before checkout." }, 400);
   // Fingerprint the submitted point, not a projection that could change with a
   // future map snapshot. Existing orders and holds retain their frozen route.
-  const fingerprint = JSON.stringify({ items, destination: {
-    lat: body.destination.lat, lng: body.destination.lng, confirmed: true,
-  } });
+  const fingerprint = intentFingerprint(requestedItems, body.destination);
   const existing = await db
     .prepare("SELECT * FROM orders WHERE account_id = ? AND request_key = ?")
     .bind(session.account_id, key)
     .first();
   if (existing)
-    return existing.request_hash === fingerprint
+    return matchesIntent(existing.request_hash, fingerprint)
       ? json(publicOrder(existing, now))
       : json(
           { error: "This checkout ID was already used for a different cart." },
@@ -128,9 +125,17 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
     .prepare("SELECT * FROM checkout_queue WHERE account_id = ? AND request_key = ?")
     .bind(session.account_id, key)
     .first();
-  if (queued) return queued.request_hash === fingerprint && queued.kind === kind
+  if (queued) return matchesIntent(queued.request_hash, fingerprint) && queued.kind === kind
     ? checkoutResult(db, session.account_id, key, now)
     : json({ error: "This checkout ID was already used for a different cart." }, 409);
+  // Only new checkouts consult today's catalog. Retries above keep their saved
+  // prices and remain recoverable even after a product is removed from sale.
+  const items = [];
+  for (const item of requestedItems) {
+    const product = productsById.get(item.id);
+    if (!product) return json({ error: "The cart contains an invalid product or quantity." }, 400);
+    items.push({ id: product.id, name: product.name, priceCents: product.priceCents, quantity: item.quantity });
+  }
   // Store ownership, eligibility, and final snapped geometry are server-owned.
   const route = pickupRoute(body.destination, items.map(item => productsById.get(item.id).storeId));
   if (!route) return json({ code: "delivery_pin_required", error: "Confirm an exact delivery pin on a highlighted UC Merced walkway before checkout. Pins outside the connected campus paths are not accepted." }, 400);
@@ -180,7 +185,7 @@ export async function createDemoOrder(request, db, session, now, kind = "purchas
     .bind(session.account_id, key)
     .first();
   if (!queuedResult) return json({ code: "active_reservation", error: "Your demo wallet already has a pending checkout. Finish or cancel it before starting another." }, 409);
-  if (queuedResult.request_hash !== fingerprint || queuedResult.kind !== kind)
+  if (!matchesIntent(queuedResult.request_hash, fingerprint) || queuedResult.kind !== kind)
     return json(
       { error: "This checkout ID was already used for a different cart." },
       409,
@@ -232,7 +237,7 @@ export async function checkoutResult(db, accountId, key, now) {
 
 export async function reservationAction(request, db, session, key, action, now) {
   if (request.headers.get("x-csrf-token") !== session.csrf) {
-    return json({ error: "Session validation failed. Reload and try again." }, 403);
+    return json({ code: "csrf_mismatch", error: "Session validation failed. Reload and try again." }, 403);
   }
   const queued = await db.prepare("SELECT * FROM checkout_queue WHERE account_id = ? AND request_key = ? AND kind = 'reservation'")
     .bind(session.account_id, key).first();

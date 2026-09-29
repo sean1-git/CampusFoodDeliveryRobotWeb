@@ -188,6 +188,10 @@ export async function handleApi(request, env, now = Date.now()) {
       return json({ error: "Not found." }, 404);
     return await createCheckout();
   } catch (error) {
+    if (error.message === "REQUEST_TIMEOUT")
+      return json({ code: "request_timeout", error: "The checkout request took too long to upload. Please try again." }, 408);
+    if (error.message === "REQUEST_ABORTED")
+      return json({ code: "request_aborted", error: "The checkout request was cancelled." }, 400);
     if (["JSON_REQUIRED", "INVALID_JSON", "TOO_LARGE"].includes(error.message))
       return json(
         { error: "The checkout request is invalid or too large." },

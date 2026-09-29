@@ -23,7 +23,7 @@ export function useCampusStore() {
   const [online, setOnline] = useState(navigator.onLine);
   const [visible, setVisible] = useState(document.visibilityState !== "hidden");
   const inventory = useInventory(online);
-  const { catalog, refreshInventory } = inventory;
+  const { catalog, refreshInventory, invalidateInventory } = inventory;
   const [session, setSession] = useState<Session | null>(null);
   const sessionToken = useRef<string | null>(null);
   const accountEpoch = useRef(0);
@@ -36,6 +36,8 @@ export function useCampusStore() {
   const [destination, setDestination] = useState<DeliveryPin | null>(null);
   const [reservation, setReservation] = useState<Reservation | null>(restoreHold);
   const reservationRef = useRef(reservation);
+  const reconciliation = useRef<{ epoch: number; key: string; task: Promise<void> } | null>(null);
+  const deferredRefresh = useRef(false);
   // Retain unfinished checkouts from the prior app version for safe recovery.
   const [pending, setPending] = useState<Pending | null>(() => load("campus-pending", null));
   const [error, setError] = useState("");
@@ -140,22 +142,29 @@ export function useCampusStore() {
 
   const reconcileHold = useCallback(async () => {
     const attempt = reservationRef.current;
-    if (!attempt || busy.current) return;
+    if (!attempt || busy.current || !navigator.onLine || document.visibilityState === "hidden") return;
     const epoch = accountEpoch.current;
-    try {
-      const result = await requestJson<CheckoutReply>(`/api/checkouts/${attempt.key}`);
-      if (epoch !== accountEpoch.current || reservationRef.current?.key !== attempt.key || busy.current) return;
-      acceptReply(result, attempt, false);
-    } catch (failure) {
-      const problem = failure as ApiError;
-      if (epoch !== accountEpoch.current || reservationRef.current?.key !== attempt.key || busy.current) return;
-      if (problem.code === "expired") clearExpired();
-      else if (problem.status === 410 || problem.status === 404 || problem.code === "sold_out" || problem.code === "insufficient_funds") {
-        writeHold(null);
-        setError(problem.message);
+    const previous = reconciliation.current;
+    if (previous?.epoch === epoch && previous.key === attempt.key) return previous.task;
+    // Focus, tab events and the recovery timer can all request this same read.
+    const task = (async () => {
+      try {
+        const result = await requestJson<CheckoutReply>(`/api/checkouts/${attempt.key}`);
+        if (epoch !== accountEpoch.current || reservationRef.current?.key !== attempt.key || busy.current) return;
+        acceptReply(result, attempt, false);
+      } catch (failure) {
+        const problem = failure as ApiError;
+        if (epoch !== accountEpoch.current || reservationRef.current?.key !== attempt.key || busy.current) return;
+        if (problem.code === "expired") clearExpired();
+        else if (problem.status === 410 || problem.status === 404 || problem.code === "sold_out" || problem.code === "insufficient_funds") {
+          writeHold(null);
+          setError(problem.message);
+        }
+        // A transport failure cannot prove that a confirmation failed.
       }
-      // A transport failure cannot prove that a confirmation failed.
-    }
+    })().finally(() => { if (reconciliation.current?.task === task) reconciliation.current = null; });
+    reconciliation.current = { epoch, key: attempt.key, task };
+    return task;
   }, [acceptReply, clearExpired, writeHold]);
 
   const cartSnapshot = useRef(JSON.stringify(cart));
@@ -198,24 +207,33 @@ export function useCampusStore() {
 
   useEffect(() => subscribeTabEvents((type) => {
     if (["cart", "checkout", "orders", "session"].includes(type)) syncStoredState();
-    if (!navigator.onLine) return;
+    if (type === "session" || type === "orders") {
+      // Preserve invalidations while hidden/offline even when the cached catalog is fresh.
+      deferredRefresh.current = true;
+      invalidateInventory();
+      if (type === "orders") setNotice("An order was updated in another tab. Refreshing your wallet and order status.");
+    }
+    if (!navigator.onLine || document.visibilityState === "hidden") return;
     if (type === "checkout") {
       // The reserving broadcast precedes the POST; polling it now can return
       // 404 and erase another tab's in-flight checkout.
       if (reservationRef.current?.phase !== "reserving") void reconcileHold();
     }
     if (type === "session" || type === "orders") {
-      if (type === "orders") setNotice("An order was updated in another tab. Refreshing your wallet and order status.");
-      void refresh().catch(() => {});
-      void refreshInventory(true).catch(() => {});
+      deferredRefresh.current = false;
+      void refresh().catch(() => { deferredRefresh.current = true; });
+      void refreshInventory().catch(() => {});
     }
-  }), [reconcileHold, refresh, refreshInventory, syncStoredState]);
+  }), [reconcileHold, refresh, refreshInventory, invalidateInventory, syncStoredState]);
 
   useEffect(() => {
     const wake = () => {
       if (!navigator.onLine || document.visibilityState === "hidden") return;
       syncStoredState();
-      void refresh(false).catch(() => {});
+      const invalidate = deferredRefresh.current;
+      deferredRefresh.current = false;
+      void refresh(invalidate).catch(() => { if (invalidate) deferredRefresh.current = true; });
+      void refreshInventory().catch(() => {});
       void reconcileHold();
     };
     window.addEventListener("focus", wake);
@@ -226,7 +244,7 @@ export function useCampusStore() {
       window.removeEventListener("pageshow", wake);
       document.removeEventListener("visibilitychange", wake);
     };
-  }, [refresh, reconcileHold, syncStoredState]);
+  }, [refresh, refreshInventory, reconcileHold, syncStoredState]);
 
   useEffect(() => {
     if (!online) { setBooting(false); return; }
@@ -317,7 +335,9 @@ export function useCampusStore() {
   }
   function failAction(failure: unknown) {
     const problem = failure as ApiError;
-    if (problem.status === 401) {
+    if (problem.status === 401 || (problem.status === 403 && problem.code === "csrf_mismatch")) {
+      // Another tab may have replaced the cookie during first-session creation.
+      // Refresh identity, but leave replaying the same checkout to the user.
       expireSession();
       void refresh().catch(() => {});
     }
