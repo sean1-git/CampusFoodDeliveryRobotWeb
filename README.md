@@ -6,6 +6,8 @@ I built this so students wouldn't have to walk across campus just to find out wh
 
 [Try the demo](https://projectdemo-qf2f7jkpma-ew.a.run.app/) 
 
+The app will be available at [ucmcampusstore.com](https://ucmcampusstore.com/), hosted on Google Cloud Run, once HTTPS setup is complete.
+
 The demo uses sample inventory and a $50 wallet. School sign-in, real payments, and physical robots are not connected.
 
 ## How it works
