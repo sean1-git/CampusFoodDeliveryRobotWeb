@@ -1,4 +1,4 @@
-# UC Merced Campus Store 
+# UC Merced Campus Store | Full-Stack PWA & Autonomous Delivery Platform
 A shopping PWA for UC Merced. Students shop at The Summit's Marketplace and Bobcat's Snack Shop, choose a campus meeting point, and follow a simulated robot delivery.
 
 I built this so students wouldn't have to walk across campus just to find out whether a store has what they need. The idea is to check availability with a tap, buy an item, and have it delivered to their campus meeting point.
