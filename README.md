@@ -8,6 +8,7 @@ I built this so students wouldn't have to walk across campus just to find out wh
 Hosted on Google Cloud Run with a custom HTTPS domain.
 
 The demo uses sample inventory and a $50 wallet. School sign-in, real payments, and physical robots are not connected.
+Final phase: Production-ready campus-wide platform with multiple robots, failover, monitoring, payments, inventory sync, and safety systems
 
 ## How it works
 
