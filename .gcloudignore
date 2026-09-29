@@ -12,6 +12,5 @@ dist-ssr/
 !.env.example
 *.log
 # Native projects stay in Git but are not inputs to the Cloud Run web build.
-android/
-ios/
-assets/native/
+apps/mobile/
+apps/web/assets/native/

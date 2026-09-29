@@ -1,6 +1,6 @@
 # UC Merced walkway snapshot
 
-`shared/campusWalkways.json` is a derived OpenStreetMap pedestrian graph for the campus delivery **simulation**. It replaces manually drawn route geometry with mapped walkway connectivity. It is not a surveyed robot navigation map and does not certify path width, slope, pavement, temporary closures, crossing safety, or permission to operate a robot.
+`packages/domain/src/campus/campusWalkways.json` is a derived OpenStreetMap pedestrian graph for the campus delivery **simulation**. It replaces manually drawn route geometry with mapped walkway connectivity. It is not a surveyed robot navigation map and does not certify path width, slope, pavement, temporary closures, crossing safety, or permission to operate a robot.
 
 ## Source and scope
 
@@ -17,8 +17,8 @@ The extract may omit unmapped paths. This static snapshot does not poll OSM or r
 Save the public XML response in `.sites-runtime/ucm-osm-full-campus.xml`, then run from the repository root:
 
 ```sh
-node scripts/import-campus-walkways.mjs .sites-runtime/ucm-osm-full-campus.xml shared/campusWalkways.json 2026-09-27
-node --test tests/walkway-import.test.mjs
+node tooling/data/import-campus-walkways.mjs .sites-runtime/ucm-osm-full-campus.xml packages/domain/src/campus/campusWalkways.json 2026-09-27
+node --test tests/tooling/walkway-import.test.mjs
 ```
 
 The importer is offline, uses no additional dependencies, and produces identical output for identical input and snapshot date. A fresh download is a new snapshot, because OpenStreetMap data changes. Review graph changes and bump the data version before releasing a changed network. Regenerating this file does not modify saved orders or their frozen routes.

@@ -49,8 +49,8 @@ option to consider as the project grows.
 ## Docker packaging
 
 The Dockerfile builds the frontend, then copies its output and the Node API into a
-runtime image. Shop photos and other files in `public/` are included in
-`dist/client`; `assets/app-logo.png` generates the smaller app icons during the
+runtime image. Shop photos and other files in `apps/web/public/` are included in
+`dist/client`; `apps/web/assets/app-logo.png` generates the smaller app icons during the
 build. Original artwork, build dependencies, tests, and documentation stay out
 of the runtime image. Explicit build inputs also let backend-only changes reuse
 the frontend build cache.
@@ -137,7 +137,7 @@ Cloud Run traffic. Changes made directly in Cloud Run are not reported here.
 If reporting fails, inspect the workflow log and the linked Cloud Build result.
 After fixing a connection, trigger, or reporting problem, rerun the observer on
 the current `main` commit. If the Cloud Build trigger/check name changes, update
-`CHECK_NAME` in `scripts/report-deployment.mjs` to the verified primary check.
+`CHECK_NAME` in `tooling/deploy/report-deployment.mjs` to the verified primary check.
 
 When renaming the repository, update the Cloud Build triggers and their connected
 repository reference as well as the git remote. GitHub redirects git operations,

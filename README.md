@@ -39,16 +39,23 @@ The demo uses sample inventory and a $50 wallet. School sign-in, real payments, 
 ## Project structure
 
 ```text
-src/             # React UI, hooks, client helpers, and PWA registration
-server/          # HTTP API, sessions, inventory, and checkout
-shared/          # Catalog, stores, walkway data, and routing
-db/, drizzle/    # Drizzle schema and SQL migrations
-public/, assets/ # Served assets and source artwork
-android/, ios/   # Capacitor native projects
-scripts/         # Development, builds, compression, and walkway import
-tests/           # API, checkout, routing, offline, and tooling checks
-docs/            # Walkway data and dependency notes
+apps/
+  web/           # React app, public files, and source artwork
+    src/app/     # App shell and store coordination
+    src/features/ # Storefront, checkout, delivery, and order history
+    src/shared/  # API, browser state, PWA, and reusable UI helpers
+  api/src/       # HTTP, authentication, inventory, orders, and database access
+  mobile/        # Android and iOS Capacitor projects
+packages/
+  domain/src/    # Shared catalog, campus graph, and delivery routing
+  database/      # Drizzle schema and SQL migrations
+tooling/         # Build, local development, data import, and deployment scripts
+tests/           # API, web, domain, integration, and tooling tests
+docs/            # Deployment, native setup, and maintenance notes
 ```
+
+Run npm commands from the repository root. The apps share one dependency lockfile;
+generated builds stay in `dist/`, and the local demo database stays in `.data/`.
 
 ## Local development
 
@@ -81,7 +88,7 @@ The demo runs one Cloud Run instance with local SQLite; container replacement re
 
 - [Configuration](.env.example): environment variables and key restrictions.
 - [Walkway data](docs/WALKWAY_DATA.md): coverage, routing limits, import steps, and attribution.
-- [Native setup](NATIVE.md): Android/iOS development, testing, and signing requirements.
+- [Native setup](docs/NATIVE.md): Android/iOS development, testing, and signing requirements.
 - [Dependencies](docs/DEPENDENCIES.md): runtime packaging and tooling maintenance.
 - [Deployment](docs/DEPLOYMENT.md): Cloud Run releases and GitHub deployment reporting.
 - [Security](SECURITY.md): credential handling, automated checks, and demo limits.

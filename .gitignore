@@ -46,7 +46,7 @@ application_default_credentials.json
 *.keystore
 *.p12
 *.mobileprovision
-android/local.properties
-android/key.properties
-ios/App/App/public/
-android/app/src/main/assets/public/
+apps/mobile/android/local.properties
+apps/mobile/android/key.properties
+apps/mobile/ios/App/App/public/
+apps/mobile/android/app/src/main/assets/public/

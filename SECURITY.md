@@ -8,7 +8,7 @@ Keep credentials in deployment settings or a secret manager. Never put secrets i
 
 The Google Maps JavaScript key is intentionally sent to the browser. Restrict it to the Maps JavaScript API and the exact deployed website referrers. It is separate from any private server credential.
 
-GitHub secret scanning and push protection are enabled, along with Dependabot security updates and CodeQL. The security workflow runs a redacted [Gitleaks](https://github.com/gitleaks/gitleaks) history scan and audits locked dependencies on pushes and pull requests. Actions use pinned commits; the scanner download is checksum-verified. Its only project-specific exception is the exact public inventory-cache identifier in `src/lib/inventoryCache.ts`.
+GitHub secret scanning and push protection are enabled, along with Dependabot security updates and CodeQL. The security workflow runs a redacted [Gitleaks](https://github.com/gitleaks/gitleaks) history scan and audits locked dependencies on pushes and pull requests. Actions use pinned commits; the scanner download is checksum-verified. Its only project-specific exception is the exact public inventory-cache identifier in `apps/web/src/shared/state/inventoryCache.ts`.
 
 Before pushing, run `gitleaks git --redact=100 --pre-commit --staged` with Gitleaks 8.30.1 and `npm audit`. If a real credential is exposed, revoke or rotate it first, then remove it from current files and coordinate any necessary history cleanup. Deleting a file alone does not revoke its credentials.
 

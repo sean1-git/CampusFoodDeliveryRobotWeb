@@ -25,9 +25,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: scripts/report-deployment.mjs
+          sparse-checkout: tooling/deploy/report-deployment.mjs
           sparse-checkout-cone-mode: false
       - name: Observe the existing Cloud Build deployment
-        run: node scripts/report-deployment.mjs
+        run: node tooling/deploy/report-deployment.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}

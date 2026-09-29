@@ -25,9 +25,8 @@ dist-ssr
 **/.pypirc
 .gitleaks.toml
 
-android
-ios
-assets/native
+apps/mobile
+apps/web/assets/native
 
 # These are maintained in Git but are not Cloud Run build inputs.
 docs
