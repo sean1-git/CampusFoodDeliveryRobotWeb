@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 export const CHECK_NAME = 'cloudrun-projectdemo-europe-west1-sean1-git-CampusFoodDelivecnv (projectdemo-509505)';
 export const CHECK_APP = 'google-cloud-developer-connect';
 export const ENVIRONMENT = 'Production';
-export const ENVIRONMENT_URL = 'https://projectdemo-qf2f7jkpma-ew.a.run.app/';
+export const ENVIRONMENT_URL = 'https://ucmcampusstore.com/';
 const SOURCE = 'cloud-build-observer';
 const BUILD_LIST_URL = 'https://console.cloud.google.com/cloud-build/builds?project=projectdemo-509505';
 

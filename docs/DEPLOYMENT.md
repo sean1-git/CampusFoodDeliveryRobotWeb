@@ -1,5 +1,51 @@
 # Deployment
 
+## Custom domain
+
+`ucmcampusstore.com` is mapped to the `projectdemo` Cloud Run service in
+`europe-west1`. Domain mapping uses a Google-managed certificate; DNS being
+configured does not mean HTTPS is ready. Check that the mapping reports
+`Ready=True` and the HTTPS site loads before sharing the new address.
+
+In Namecheap **Advanced DNS → Host Records**, the apex uses these records returned
+by this Cloud Run mapping. Each row is a separate record with host `@` and
+Automatic TTL:
+
+| Type | Host | Value |
+| --- | --- | --- |
+| A | `@` | `216.239.32.21` |
+| A | `@` | `216.239.34.21` |
+| A | `@` | `216.239.36.21` |
+| A | `@` | `216.239.38.21` |
+| AAAA | `@` | `2001:4860:4802:32::15` |
+| AAAA | `@` | `2001:4860:4802:34::15` |
+| AAAA | `@` | `2001:4860:4802:36::15` |
+| AAAA | `@` | `2001:4860:4802:38::15` |
+
+Replace conflicting apex parking or URL Redirect records; keep verification TXT,
+SPF, and MX records. Namecheap redirects can create an
+[implicit A record](https://www.namecheap.com/support/knowledgebase/article.aspx/385/2237/how-to-set-up-a-url-redirect-for-a-domain/)
+that disappears when the redirect is removed. `www` requires its own mapping and
+DNS record. If CAA restrictions are added, allow both `pki.goog` and
+`letsencrypt.org`.
+
+For application access, use `https://ucmcampusstore.com` as `CANONICAL_ORIGIN` or
+add it to `ALLOWED_ORIGINS`. Keep both existing origins allowed:
+
+- `https://projectdemo-qf2f7jkpma-ew.a.run.app`
+- `https://projectdemo-250283665537.europe-west1.run.app`
+
+Add `https://ucmcampusstore.com/*` to the Maps browser key's website restrictions,
+preserving both existing `run.app` entries and the Maps JavaScript API restriction.
+Native builds still default to the second `run.app` origin; changing DNS does not
+change installed apps. Cookies, saved bags, and PWA installations are separate
+for each origin, so a browser visiting the new domain starts a separate demo session.
+
+[Cloud Run domain mapping](https://docs.cloud.google.com/run/docs/mapping-custom-domains)
+is a preview feature suitable for this demo; Google does not recommend it for
+production services. An external Application Load Balancer is the production
+option to consider as the project grows.
+
 ## Docker packaging
 
 The Dockerfile builds the frontend, then copies its output and the Node API into a
@@ -47,7 +93,7 @@ Static responses use ETags and return `304 Not Modified` for unchanged files.
 Fingerprinted assets keep their long cache lifetime; HTML, icons, and shop photos
 revalidate so new deployments can replace them safely. A bounded 8 MiB file cache
 avoids repeated disk reads, while the PWA cache continues to support offline use.
-These changes optimize the existing `run.app` hosting. A CDN and object storage
+These changes optimize the existing Cloud Run hosting. A CDN and object storage
 are still future infrastructure, not part of this deployment.
 
 References: [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events),
