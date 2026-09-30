@@ -1,3 +1,6 @@
+# Local OpenAI hosting metadata
+.openai/
+
 # Logs
 logs
 *.log
