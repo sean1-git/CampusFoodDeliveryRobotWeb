@@ -1,0 +1,86 @@
+/* Theme roles override the existing light palette without changing layout or
+   recoloring photographs, logos, food artwork, or Google's map attribution. */
+:root { color-scheme: light; }
+.header-actions { gap: 12px; }
+.theme-control { display: inline-flex; align-items: center; flex-shrink: 0; gap: 6px; padding-left: 12px; border: 1px solid var(--md-outline-variant); border-radius: 18px; background: var(--md-surface); color: var(--md-on-surface); }
+.theme-control select { min-height: 44px; max-width: 100px; padding: 0 8px 0 0; border: 0; border-radius: 16px; background: transparent; color: inherit; font-size: .8rem; cursor: pointer; }
+.theme-control:focus-within { outline: 3px solid var(--md-primary); outline-offset: 3px; }
+.theme-control select:focus-visible { outline: none; }
+@media (min-width: 761px) and (max-width: 1150px) {
+  .header { flex-wrap: wrap; }
+  .header nav { order: 3; width: 100%; justify-content: center; }
+}
+@media (max-width: 420px) {
+  .header-actions { flex-wrap: wrap; gap: 8px; }
+  .theme-control { padding-left: 8px; }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --md-sys-color-primary: #b4c9ff;
+  --md-sys-color-on-primary: #122b54;
+  --md-sys-color-primary-container: #293f65;
+  --md-sys-color-on-primary-container: #dce7ff;
+  --md-sys-color-secondary: #a9d8c4;
+  --md-sys-color-secondary-container: #24463b;
+  --md-sys-color-on-secondary-container: #c8f2df;
+  --md-sys-color-tertiary: #f3cf6c;
+  --md-sys-color-surface: #172233;
+  --md-sys-color-surface-container: #1d2b3f;
+  --md-sys-color-surface-container-high: #29394f;
+  --md-sys-color-on-surface: #edf2fc;
+  --md-sys-color-on-surface-variant: #bac7dc;
+  --md-sys-color-outline: #8698b2;
+  --md-sys-color-outline-variant: #3d4f68;
+  --md-sys-color-error: #ffb4ab;
+  --md-sys-color-error-container: #542d31;
+  --md-sys-color-on-error-container: #ffdad5;
+  --md-primary: var(--md-sys-color-primary);
+  --md-primary-dark: #cbd9ff;
+  --md-primary-container: var(--md-sys-color-primary-container);
+  --md-on-primary-container: var(--md-sys-color-on-primary-container);
+  --md-surface: var(--md-sys-color-surface);
+  --md-surface-container: var(--md-sys-color-surface-container);
+  --md-surface-container-high: var(--md-sys-color-surface-container-high);
+  --theme-success: #b2e8cc;
+  --theme-success-surface: #203e35;
+  --theme-warning: #f6d58c;
+  --theme-warning-surface: #433824;
+  background: #101827;
+}
+:root[data-theme="dark"] body { background: radial-gradient(ellipse at 85% 0, #203448 0, transparent 45%), #101827; }
+:root[data-theme="dark"] .header { background: #172233ed; }
+:root[data-theme="dark"] :is(.header nav, .store-tabs, .checkout-steps, .inventory-disclosure, .pickup-timeline li, .order-progress-summary, .order-meeting-point, .order-receipt, .pin-summary, .campus-delivery .location-tools, .friendly-map .map-point-details) { background: var(--md-surface-container); border-color: var(--md-outline-variant); color: var(--md-on-surface); }
+:root[data-theme="dark"] :is(.product, .bag-panel, .empty-orders, .order-record, .campus-delivery, .campus-map, .campus-control-section, .friendly-map, .pin-confirm-bar, .menu-search, .menu-sort select, .path-picker select, .campus-control-section select, .location-remove-button, .map-shop-card, .map-pickup-button, .order-details-toggle, .message button, .quantity button, .bag-panel select) { background: var(--md-surface); color: var(--md-on-surface); border-color: var(--md-outline-variant); }
+:root[data-theme="dark"] :is(.header nav button.nav-active, .store-tabs button[aria-selected="true"]) { background: var(--md-primary-container); border-color: var(--md-outline-variant); color: var(--md-on-primary-container); }
+:root[data-theme="dark"] .storefront { --store-accent: #b4c9ff; --store-tint: #293f65; }
+:root[data-theme="dark"] .storefront[data-store="library"] { --store-accent: #a9e2c8; --store-tint: #24463b; }
+:root[data-theme="dark"] .store-tabs button { color: var(--md-on-surface-variant); }
+:root[data-theme="dark"] .product .add { background: var(--store-accent); color: #142b35; }
+:root[data-theme="dark"] :is(.primary, .location-use-button, .mobile-bag) { background: var(--md-primary); color: var(--md-on-primary); border-color: var(--md-primary); }
+:root[data-theme="dark"] .primary:hover:not(:disabled) { background: #ccdbff; }
+:root[data-theme="dark"] :is(.wallet, .product-details .pickup-chip, .map-area-badge, .pin-valid, .delivery-celebration-toast, .order-status-delivered, .pickup-timeline .complete) { background: var(--theme-success-surface); color: var(--theme-success); border-color: #416959; }
+:root[data-theme="dark"] .wallet strong { color: var(--theme-success); }
+:root[data-theme="dark"] .bag-title { background: linear-gradient(125deg, #283653, #203e35); }
+:root[data-theme="dark"] .empty-icon { box-shadow: 0 0 0 12px #223c37, 0 0 0 24px #1d3032; }
+:root[data-theme="dark"] :is(.product-stock-details, .totals, .totals > div:not(.grand-total)) { color: var(--md-on-surface-variant); }
+:root[data-theme="dark"] :is(.demo-inventory-badge, .map-notice, .pin-invalid, .order-offline-note, .friendly-map .map-unavailable, .order-status-preparing) { background: var(--theme-warning-surface); color: var(--theme-warning); border-color: #7e693c; }
+:root[data-theme="dark"] :is(.product-tag) { background: #172233ed; color: #edf2fc; border-color: #52647d; }
+:root[data-theme="dark"] .product-art { background-image: radial-gradient(circle at 30% 25%, #10182730, #10182770); }
+:root[data-theme="dark"] :is(.delivery-status-card) { background: linear-gradient(115deg, #223451, #203c35); border-color: var(--md-outline-variant); }
+:root[data-theme="dark"] :is(.delivery-orb, .pin-summary-icon, .order-step-number, .checkout-steps span, .pickup-timeline li > span) { background: var(--md-surface-container-high); color: var(--md-on-surface); box-shadow: none; border-color: var(--md-outline-variant); }
+:root[data-theme="dark"] :is(.order-status-delivering, .pickup-timeline .current, .friendly-map button[aria-pressed="true"], .campus-demo-badge) { background: var(--md-primary-container); color: var(--md-on-primary-container); border-color: var(--md-primary); box-shadow: none; }
+:root[data-theme="dark"] :is(.checkout-steps .current span, .pickup-timeline .current > span, .order-journey-steps .current .order-step-number) { background: var(--md-primary); color: var(--md-on-primary); box-shadow: 0 0 0 3px var(--md-primary-container); }
+:root[data-theme="dark"] :is(.checkout-steps .complete, .order-journey-steps .complete .order-step-number) { color: var(--theme-success); }
+:root[data-theme="dark"] :is(.checkout-steps .complete span, .order-journey-steps .complete .order-step-number) { background: var(--theme-success-surface); }
+:root[data-theme="dark"] :is(.checkout-steps .current, .order-journey-steps .current) { color: var(--md-primary); }
+:root[data-theme="dark"] :is(.orders-view.orders-workspace, .order-receipt-totals .order-receipt-total, .map-panel-heading strong, .ucm-footer-brand strong, .delivery-countdown strong, .empty-orders h2, .menu-search input) { color: var(--md-on-surface); }
+:root[data-theme="dark"] :is(.store-description, .store-inventory-note, .result-count, .bag-pickup-store, .inventory-disclosure, .menu-empty, .checkout-steps li, .delivery-status-content p:not(.eyebrow), .delivery-countdown span, .path-picker, .map-intro, .map-help, .map-legend, .location-actions > span, .pin-summary small, .pin-trip small, .map-panel-heading div > span, .map-shop-card small, .map-shop-card > span > span, .map-pickup-button small, .friendly-map .map-point-coordinates, .friendly-map .map-keyboard-help, .friendly-map .map-data-credit, .campus-map figcaption, .campus-privacy, .campus-position, .campus-route-metrics span, .orders-page-heading p:not(.eyebrow), .orders-demo-note, .order-record-identity .eyebrow, .order-record-identity p, .order-progress-summary .eyebrow, .order-progress-summary p:not(.eyebrow), .order-arrival-estimate > span, .order-journey-steps li, .order-journey-steps p, .order-meeting-point .eyebrow, .order-coordinates, .order-timing-help, .order-item-quantity, .order-receipt-totals) { color: var(--md-on-surface-variant); }
+:root[data-theme="dark"] :is(.map-data-credit a, .order-timing-help summary, .campus-route-metrics strong) { color: var(--md-primary); }
+:root[data-theme="dark"] :is(.inventory-disclosure > div, .pin-trip, .order-receipt, .order-receipt-total, .order-journey-steps li::before, .campus-map figcaption, .campus-route-metrics, .bag-line, footer) { border-color: var(--md-outline-variant); }
+:root[data-theme="dark"] :is(.map-toolbar .back, .map-shop-card:hover:not(:disabled), .order-details-toggle:hover, .location-remove-button:hover) { background: var(--md-surface-container-high); color: var(--md-on-surface); border-color: var(--md-outline); }
+:root[data-theme="dark"] :is(.map-store-photo-marker, .map-robot-marker) { background: #172233; color: #edf2fc; border-color: #a9bdd8; }
+:root[data-theme="dark"] md-filter-chip { --md-filter-chip-selected-container-color: var(--md-primary-container); }
+:root[data-theme="dark"] md-linear-progress { --md-linear-progress-active-indicator-color: var(--md-primary); --md-linear-progress-track-color: var(--md-outline-variant); }
+:root[data-theme="dark"] :is(button, a, select, summary, input):focus-visible { outline-color: #f3cf6c; }
+:root[data-theme="dark"] input::placeholder { color: #aab8cf; opacity: 1; }

@@ -6,6 +6,7 @@ import type { Coordinate, DeliveryPin, GeoRoute } from "../../../../../packages/
 import type { CampusStore } from "../../app/useCampusStore";
 import { stores } from "../../../../../packages/domain/src/catalog/stores";
 import { loadGoogleMaps } from "./googleMaps";
+import { useTheme, type Theme } from "../../shared/ui/theme";
 import "./CampusMap.css";
 import "./GoogleDeliveryMap.css";
 
@@ -27,6 +28,7 @@ export const GoogleDeliveryMap = memo(function GoogleDeliveryMap({ pin, onPick, 
   mode?: "picker" | "tracking"; destinationLabel?: string;
 }) {
   const mapId = useId();
+  const theme = useTheme();
   const tracking = mode === "tracking";
   const element = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -35,10 +37,14 @@ export const GoogleDeliveryMap = memo(function GoogleDeliveryMap({ pin, onPick, 
   const lineRef = useRef<google.maps.Polyline | null>(null);
   const shopMarkerRefs = useRef(new Map<string, google.maps.marker.AdvancedMarkerElement>());
   const fittedRoute = useRef("");
+  const savedCamera = useRef<google.maps.CameraOptions | null>(null);
+  const restoringCamera = useRef(false);
   const handlers = useRef({ onPick, onReady });
   // Update event callbacks without rebuilding the Google map on every render.
   useEffect(() => { handlers.current = { onPick, onReady }; }, [onPick, onReady]);
-  const [ready, setReady] = useState(false);
+  const [loadedTheme, setLoadedTheme] = useState<Theme | null>(null);
+  const [mapVersion, setMapVersion] = useState(0);
+  const ready = loadedTheme === theme;
   const [error, setError] = useState("");
   const [selected, setSelected] = useState("destination");
   const editable = !!onPick;
@@ -51,7 +57,7 @@ export const GoogleDeliveryMap = memo(function GoogleDeliveryMap({ pin, onPick, 
     let active = true, unavailable = false;
     const authError = () => {
       unavailable = true;
-      if (active) { setError("Google Maps authorization failed. Reload after map configuration is restored."); setReady(false); handlers.current.onReady?.(false); }
+      if (active) { setError("Google Maps authorization failed. Reload after map configuration is restored."); setLoadedTheme(null); handlers.current.onReady?.(false); }
     };
     window.addEventListener("campus-map-error", authError);
     const listeners: google.maps.MapsEventListener[] = [];
@@ -62,16 +68,21 @@ export const GoogleDeliveryMap = memo(function GoogleDeliveryMap({ pin, onPick, 
     void loadGoogleMaps().then(() => {
       if (!active || unavailable || !element.current) return;
       const map = new google.maps.Map(element.current, { center: { lat: 37.3635, lng: -120.4260 }, zoom: 17,
+        colorScheme: theme === "dark" ? "DARK" : "LIGHT",
         mapId: "DEMO_MAP_ID", mapTypeControl: false, streetViewControl: false, clickableIcons: false,
         restriction: { latLngBounds: campusRestrictionBounds, strictBounds: false } });
       mapRef.current = map;
-      map.fitBounds(campusViewBounds, 40);
+      // Google fixes colorScheme at construction. Rebuild only on a theme
+      // change, retaining the camera, selected pin, route and shared SDK load.
+      restoringCamera.current = !!savedCamera.current;
+      if (savedCamera.current) map.moveCamera(savedCamera.current);
+      else map.fitBounds(campusViewBounds, 40);
       overlays.push(new google.maps.Polygon({ map, paths: campusBoundary, strokeColor: "#607a98",
         strokeOpacity: 0.35, strokeWeight: 1, fillOpacity: 0, clickable: false }));
       // One overlay per mapped path keeps the full campus network inexpensive to draw.
       let walkwayWeight = (map.getZoom() ?? 15) >= 17 ? 5 : 3;
       const walkwayLines = walkwayPaths.map(path => new google.maps.Polyline({ map, path: path.points,
-        strokeColor: "#19817b", strokeOpacity: 0.55, strokeWeight: walkwayWeight, zIndex: 1, clickable: false }));
+        strokeColor: theme === "dark" ? "#7fd4bb" : "#19817b", strokeOpacity: 0.55, strokeWeight: walkwayWeight, zIndex: 1, clickable: false }));
       overlays.push(...walkwayLines);
       listeners.push(map.addListener("zoom_changed", () => {
         const nextWeight = (map.getZoom() ?? 15) >= 17 ? 5 : 3;
@@ -113,18 +124,21 @@ export const GoogleDeliveryMap = memo(function GoogleDeliveryMap({ pin, onPick, 
       const robotMarker = new google.maps.marker.AdvancedMarkerElement({ map, title: "Simulated robot. Show position details.", content, gmpClickable: true, zIndex: 30 });
       makeClickable(robotMarker, () => setSelected("robot"));
       robotRef.current = robotMarker;
-      lineRef.current = new google.maps.Polyline({ map, strokeColor: "#244bd7", strokeWeight: 5, zIndex: 2, clickable: false });
+      lineRef.current = new google.maps.Polyline({ map, strokeColor: theme === "dark" ? "#aac4ff" : "#244bd7", strokeWeight: 5, zIndex: 2, clickable: false });
       listeners.push(map.addListener("click", (event: google.maps.MapMouseEvent) => {
         if (event.latLng && handlers.current.onPick) { setSelected("destination"); handlers.current.onPick(event.latLng.toJSON()); }
       }));
       listeners.push(marker.addListener("dragend", () => { const p = marker.position; if (p) handlers.current.onPick?.({ lat: typeof p.lat === "function" ? p.lat() : p.lat, lng: typeof p.lng === "function" ? p.lng() : p.lng }); }));
-      if (!unavailable) { setReady(true); handlers.current.onReady?.(true); }
+      if (!unavailable) { setError(""); setLoadedTheme(theme); setMapVersion(value => value + 1); handlers.current.onReady?.(true); }
     }).catch((failure: Error) => {
       unavailable = true;
-      if (active) { setError(failure.message); setReady(false); handlers.current.onReady?.(false); }
+      if (active) { setError(failure.message); setLoadedTheme(null); handlers.current.onReady?.(false); }
     });
     return () => {
       active = false;
+      const previous = mapRef.current;
+      const center = previous?.getCenter();
+      if (center) savedCamera.current = { center: center.toJSON(), zoom: previous?.getZoom(), heading: previous?.getHeading(), tilt: previous?.getTilt() };
       listeners.forEach(listener => listener.remove());
       removeMarkerListeners.forEach(remove => remove());
       overlays.forEach(overlay => overlay.setMap(null));
@@ -136,7 +150,7 @@ export const GoogleDeliveryMap = memo(function GoogleDeliveryMap({ pin, onPick, 
       window.removeEventListener("campus-map-error", authError);
       mapRef.current = null;
     };
-  }, []);
+  }, [theme]);
   const pinLat = pin?.lat, pinLng = pin?.lng;
   const robotLat = robot?.lat, robotLng = robot?.lng;
   const routePoints = route?.points;
@@ -145,32 +159,34 @@ export const GoogleDeliveryMap = memo(function GoogleDeliveryMap({ pin, onPick, 
   useEffect(() => {
     if (!ready) return;
     shopMarkerRefs.current.forEach((marker, id) => { marker.map = visibleStores.some(store => store.id === id) ? mapRef.current : null; });
-  }, [ready, visibleStores]);
+  }, [ready, mapVersion, visibleStores]);
   useEffect(() => {
     // A status update or robot tick must never undo the user's camera position.
     if (!ready || !tracking || !routeBounds || fittedRoute.current === routeIdentity) return;
     mapRef.current?.fitBounds(routeBounds, 56);
     fittedRoute.current = routeIdentity;
-  }, [ready, tracking, routeBounds, routeIdentity]);
+  }, [ready, mapVersion, tracking, routeBounds, routeIdentity]);
   // Updating robot position or interactivity must not rebuild the route geometry.
   useEffect(() => {
     // A drag can snap back to the same coordinates; still restore the marker then.
     if (ready && markerRef.current) markerRef.current.position = pin ?? null;
-  }, [ready, pin]);
+  }, [ready, mapVersion, pin]);
   useEffect(() => {
     if (ready && markerRef.current) markerRef.current.gmpDraggable = editable;
-  }, [ready, editable]);
+  }, [ready, mapVersion, editable]);
   useEffect(() => {
     if (ready) lineRef.current?.setPath(routePoints ?? []);
-  }, [ready, routePoints]);
+  }, [ready, mapVersion, routePoints]);
   useEffect(() => {
-    if (!ready || pinLat == null || pinLng == null || !editable || !mapRef.current) return;
+    if (!ready) return;
+    if (restoringCamera.current) { restoringCamera.current = false; return; }
+    if (pinLat == null || pinLng == null || !editable || !mapRef.current) return;
     // Apply center and zoom together: setZoom can cancel an in-flight panTo.
     mapRef.current.moveCamera({ center: { lat: pinLat, lng: pinLng }, zoom: Math.max(18, mapRef.current.getZoom() ?? 18) });
-  }, [ready, pinLat, pinLng, editable]);
+  }, [ready, mapVersion, pinLat, pinLng, editable]);
   useEffect(() => {
     if (ready && robotRef.current) robotRef.current.position = robotLat == null || robotLng == null ? null : { lat: robotLat, lng: robotLng };
-  }, [ready, robotLat, robotLng]);
+  }, [ready, mapVersion, robotLat, robotLng]);
   function showCampus() {
     mapRef.current?.fitBounds(campusViewBounds, 40);
   }

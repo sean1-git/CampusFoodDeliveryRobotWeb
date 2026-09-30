@@ -5,6 +5,7 @@
 import { money } from "../shared/utils/money";
 import type { CampusStore } from "./useCampusStore";
 import type { PwaControls } from "../shared/pwa/usePwa";
+import { ThemeControl } from "../shared/ui/ThemeControl";
 
 type Props = Pick<
   CampusStore,
@@ -50,6 +51,7 @@ export function StoreHeader({
         </button>
       </nav>
       <div className="header-actions">
+        <ThemeControl />
         {!installed && (
           <button className="install" onClick={() => void install()}>
             ↧ <span>Install app</span>

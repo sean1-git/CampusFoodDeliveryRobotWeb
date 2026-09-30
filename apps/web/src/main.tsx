@@ -9,6 +9,9 @@ import "@material/web/chips/filter-chip.js";
 import "@material/web/button/filled-tonal-button.js";
 import App from "./app/App.tsx";
 import "./shared/pwa/pwa";
+import { initializeTheme } from "./shared/ui/theme";
+
+initializeTheme();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

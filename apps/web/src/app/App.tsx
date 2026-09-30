@@ -17,6 +17,7 @@ import { DeliveryStatus } from "../features/delivery/DeliveryStatus";
 import { DeliveryCelebration } from "../features/delivery/DeliveryCelebration";
 import "./App.css";
 import "./MaterialEnhancements.css";
+import "./Theme.css";
 
 export default function App() {
   const store = useCampusStore();
