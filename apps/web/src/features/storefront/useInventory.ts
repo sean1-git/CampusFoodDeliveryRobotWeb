@@ -37,6 +37,12 @@ export function useInventory(online: boolean) {
       && !inventoryNeedsRefresh(latest.current?.fetchedAt ?? null, Date.now())) return Promise.resolve();
     const task = (async () => {
       try {
+        const fetchLatest = async () => {
+          // A different tab may have refreshed while this tab waited for the lock.
+          hydrateInventory();
+          if (!navigator.onLine || !visible()) return;
+          if (refreshed.current === invalidation.current && latest.current?.catalog.revision === sampleCatalog.revision
+            && !inventoryNeedsRefresh(latest.current?.fetchedAt ?? null, Date.now())) return;
         do {
           const version = invalidation.current;
           const catalog = await requestJson<Catalog>("/api/catalog");
@@ -49,6 +55,9 @@ export function useInventory(online: boolean) {
           refreshed.current = version;
           // A mutation during the fetch needs one subsequent read, not a parallel request.
         } while (refreshed.current !== invalidation.current && navigator.onLine && visible());
+        };
+        if (navigator.locks?.request) await navigator.locks.request("campus-inventory-read", fetchLatest);
+        else await fetchLatest();
       } catch (error) {
         setUnavailable(true);
         throw error;

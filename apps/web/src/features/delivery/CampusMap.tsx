@@ -11,7 +11,7 @@ function useSimulationClock(running: boolean) {
     // Historical orders never need an animation timer; hidden tabs catch up on return.
     if (!running) return;
     const tick = () => { if (document.visibilityState !== "hidden") setNow(Date.now()); };
-    const timer = window.setInterval(tick, 250);
+    const timer = window.setInterval(tick, 1000);
     window.addEventListener("pageshow", tick);
     document.addEventListener("visibilitychange", tick);
     return () => { clearInterval(timer); window.removeEventListener("pageshow", tick); document.removeEventListener("visibilitychange", tick); };

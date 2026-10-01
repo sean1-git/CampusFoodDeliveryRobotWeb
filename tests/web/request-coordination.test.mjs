@@ -23,14 +23,15 @@ const deferred = () => {
 // Execute the real hook modules with deterministic hook lifecycles, browser events,
 // storage and time. Only React scheduling, network transport, SSE and the tab bus
 // are replaced; cache validation, refresh queues and checkout logic remain real.
-function browser({ inventoryOnly = false, hidden = false, online = true, reservation, snapshot, request } = {}) {
+function browser({ inventoryOnly = false, hidden = false, online = true, reservation, snapshot, request, locks, sharedValues } = {}) {
   const state = [], effects = [], modules = new Map(), jobs = new Map(), values = new Map(), tabListeners = new Set();
   let cursor = 0, dirty = false, result, now = 1000000, nextTimer = 0, controller;
   const calls = [], publishes = [];
   const window = new EventTarget(), document = new EventTarget();
   document.visibilityState = hidden ? "hidden" : "visible";
-  const navigator = { onLine: online };
-  const localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+  const navigator = { onLine: online, locks };
+  const backing = sharedValues ?? values;
+  const localStorage = { getItem: key => backing.get(key) ?? null, setItem: (key, value) => backing.set(key, value), removeItem: key => backing.delete(key) };
   if (reservation) localStorage.setItem("campus-checkout-hold", JSON.stringify(reservation));
   if (snapshot) localStorage.setItem("campus-inventory-v1", JSON.stringify(snapshot));
   const equal = (a, b) => a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
@@ -127,6 +128,23 @@ function browser({ inventoryOnly = false, hidden = false, online = true, reserva
 }
 const count = (host, prefix) => host.calls.filter(call => call.path.startsWith(prefix)).length;
 const fresh = () => ({ catalog: catalog(), fetchedAt: 1000000 });
+
+test("simultaneous tabs serialize inventory and reuse the newer shared snapshot", async t => {
+  let tail = Promise.resolve();
+  const locks = { request(name, run) { assert.equal(name, "campus-inventory-read"); const task = tail.then(run); tail = task.catch(() => {}); return task; } };
+  const sharedValues = new Map(), response = deferred();
+  const request = path => path === "/api/catalog" ? response.promise : undefined;
+  const a = browser({ inventoryOnly: true, locks, sharedValues, request });
+  const b = browser({ inventoryOnly: true, locks, sharedValues, request });
+  t.after(a.stop); t.after(b.stop);
+  await a.flush(); await b.flush();
+  assert.equal(a.calls.length + b.calls.length, 1);
+  response.resolve(catalog(9)); await a.flush(); await b.flush();
+  assert.equal(a.calls.length + b.calls.length, 1);
+  assert.equal(b.value.catalog.products[0].stock, 9);
+  await b.value.refreshInventory(true); await b.flush();
+  assert.equal(a.calls.length + b.calls.length, 2, "explicit mutation invalidations still fetch authoritative stock");
+});
 
 test("wake events and checkout recovery share one in-flight read and retry after settlement", async t => {
   let response = deferred();

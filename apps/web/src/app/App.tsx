@@ -118,7 +118,7 @@ export default function App() {
         </a>
       )}
       <footer>
-        <div className="ucm-footer-brand"><img src="/uc-merced-seal.png" alt="University of California, Merced seal" width="64" height="64" /><div><strong>University of California, Merced</strong><p>Campus Store · Built for the space between classes.</p></div></div>
+        <div className="ucm-footer-brand"><img src="/uc-merced-seal.png" alt="University of California, Merced seal" width="64" height="64" loading="lazy" decoding="async" /><div><strong>University of California, Merced</strong><p>Campus Store · Built for the space between classes.</p></div></div>
         <span>Prototype · Simulated integrations</span>
       </footer>
     </>

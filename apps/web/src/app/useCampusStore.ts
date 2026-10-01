@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import sampleCatalog from "../../../../packages/domain/src/catalog/catalog.json";
 import type { Cart, HeldCheckout, Order, Pending, Product, QueuedCheckout, Reservation, Session } from "../shared/types";
 import { requestJson } from "../shared/api/api";
+import { checkoutRetryDelay } from "../shared/api/readGate";
 import { initialCart, load, save } from "../shared/state/storage";
 import { readReservation, reservationExpired, RESERVATION_KEY } from "../shared/state/inventoryCache";
 import { publishTabEvent, subscribeTabEvents } from "../shared/state/tabSync";
@@ -323,9 +324,11 @@ export function useCampusStore() {
   const headers = (key: string) => ({ "Content-Type": "application/json", "X-CSRF-Token": session!.csrf, "Idempotency-Key": key });
   async function waitForReply(result: CheckoutReply, key: string, confirm: boolean, epoch: number): Promise<CheckoutReply> {
     const deadline = Date.now() + 15000;
+    let attempt = 0;
     while (result.status === "pending") {
       if (Date.now() >= deadline) throw new Error("Checkout is still queued.");
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, checkoutRetryDelay(attempt++)));
+      if (!navigator.onLine || document.visibilityState === "hidden" || Date.now() >= deadline) return result;
       if (epoch !== accountEpoch.current) return result;
       result = confirm
         ? await requestJson<CheckoutReply>(`/api/reservations/${key}/confirm`, { method: "POST", headers: headers(key) })

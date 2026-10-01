@@ -75,7 +75,9 @@ export function createOrderUpdates(options: Options) {
     else if (!poll) poll = timer(() => {
       poll = null;
       if (!running()) return;
-      requestSnapshot(false);
+      // A failed snapshot already owns a backoff timer. Fixed polling must not
+      // cancel that timer and turn an outage back into a five-second retry loop.
+      if (!snapshotRetry) requestSnapshot(false);
       maintainTimers();
     }, pollDelay());
     if (!state.checkout) { checkoutPoll?.(); checkoutPoll = null; }

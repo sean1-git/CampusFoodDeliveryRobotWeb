@@ -1,4 +1,5 @@
 import type { Catalog, Reservation } from "../types";
+import { MAX_INVENTORY_BYTES } from "./persistValue.ts";
 import { inventoryTimestamp } from "../../features/storefront/inventoryFreshness.ts";
 import sampleCatalog from "../../../../../packages/domain/src/catalog/catalog.json" with { type: "json" };
 
@@ -10,7 +11,9 @@ export type InventorySnapshot = { catalog: Catalog; fetchedAt: number };
 type Reader = Pick<Storage, "getItem">;
 export function readInventorySnapshot(storage: Reader): InventorySnapshot | null {
   try {
-    const value = JSON.parse(storage.getItem(INVENTORY_CACHE_KEY) || "null");
+    const raw = storage.getItem(INVENTORY_CACHE_KEY) || "null";
+    if (raw.length * 2 > MAX_INVENTORY_BYTES) return null;
+    const value = JSON.parse(raw);
     if (!value || !Number.isFinite(value.fetchedAt) || value.fetchedAt <= 0) return null;
     const menu = value.catalog;
     if (!menu || !Number.isFinite(menu.deliveryFeeCents) || !Number.isFinite(menu.initialBalanceCents)

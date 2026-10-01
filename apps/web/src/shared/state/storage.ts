@@ -4,6 +4,7 @@
  */
 import sampleCatalog from "../../../../../packages/domain/src/catalog/catalog.json";
 import type { Cart } from "../types";
+import { persistValue } from "./persistValue";
 
 export function load<T>(key: string, fallback: T): T {
   try {
@@ -14,7 +15,7 @@ export function load<T>(key: string, fallback: T): T {
 }
 export function save(key: string, value: unknown) {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    persistValue(localStorage, key, value);
   } catch {
     /* The app still works without browser storage. */
   }

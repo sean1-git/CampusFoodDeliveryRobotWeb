@@ -214,7 +214,7 @@ export const GoogleDeliveryMap = memo(function GoogleDeliveryMap({ pin, onPick, 
         aria-label={tracking ? `Show ${store.name} pickup details` : `Show ${store.name} pickup location on the map`}
         aria-controls={`${mapId}-details`} aria-pressed={selected === store.id}
         onClick={() => showStore(store)}>
-        <img src={store.image} alt="" width="64" height="64" />
+        <img src={store.image} alt="" width="64" height="64" loading="lazy" decoding="async" />
         <span><small>{tracking ? `PICKUP ${index + 1}` : "ROBOT PICKUP"}</small><strong>{store.name}</strong>{!tracking && <span>View on map <span aria-hidden="true">↗</span></span>}</span>
       </button>)}
     </div>

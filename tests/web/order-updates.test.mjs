@@ -75,6 +75,20 @@ test("checkout recovery remains every five seconds on a healthy stream", () => {
   assert.equal(host.reconciles.length, 3);
 });
 
+test("fallback polling does not preempt failed snapshot exponential backoff", async () => {
+  const host = harness({ native: true, refresh: () => Promise.reject(new Error("offline server")) });
+  host.update({ activeOrders: true });
+  host.advance(5000); await Promise.resolve();
+  host.advance(2000); await Promise.resolve();
+  host.advance(3000); await Promise.resolve();
+  assert.equal(host.refreshes.length, 2, "10-second poll must defer to pending retry");
+  host.advance(1000); await Promise.resolve();
+  assert.equal(host.refreshes.length, 3);
+  host.advance(4000); await Promise.resolve();
+  assert.equal(host.refreshes.length, 3, "15-second poll must not bypass eight-second backoff");
+  host.updates.stop();
+});
+
 test("hidden and offline pause both transports and checkout recovery; resume snapshots again", () => {
   const host = harness();
   host.update({ checkout: true }); host.streams[0].emit("ready");
